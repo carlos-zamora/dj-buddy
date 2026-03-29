@@ -1,0 +1,52 @@
+# Build results
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# User-specific files
+*.rsuser
+
+# Build logs
+*.log
+msbuild*.wrn
+msbuild*.err
+
+# NuGet
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nupkg
+**/[Pp]ackages/repositories.config
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Rider
+.idea/
+
+# NCrunch
+*.ncrunch*
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# Publish profiles
+*.pubxml
+!**/[Pp]ublish[Pp]rofiles/
+
+# MAUI specific
+*.ipa
+*.apk
+*.aab

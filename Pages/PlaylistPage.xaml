@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:dj_buddy.Pages"
+             xmlns:root="clr-namespace:dj_buddy"
+             x:Class="dj_buddy.Pages.PlaylistPage">
+
+    <ContentPage.Resources>
+        <root:FolderIconConverter x:Key="FolderIconConverter" />
+
+        <DataTemplate x:Key="HeaderTemplate">
+            <Label Text="{Binding Title}"
+                   FontSize="13" FontAttributes="Bold" TextColor="Gray"
+                   Padding="16,16,16,4" TextTransform="Uppercase" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="NodeTemplate">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
+                <Label Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}"
+                       FontSize="16" VerticalTextAlignment="Center" />
+                <Label Grid.Column="1" Text="{Binding Name}"
+                       FontSize="16" VerticalTextAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="TrackTemplate">
+            <Grid ColumnDefinitions="*,60,50" Padding="16,8">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="{Binding Name}" FontSize="15"
+                           LineBreakMode="TailTruncation" />
+                    <Label Text="{Binding Artist}" FontSize="12" TextColor="Gray"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+
+                <Label Grid.Column="1" Text="{Binding BpmDisplay}" FontSize="14"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+                <Label Grid.Column="2" Text="{Binding KeyDisplay}" FontSize="14"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+
+    </ContentPage.Resources>
+
+    <CollectionView x:Name="ContentList"
+                    SelectionMode="Single"
+                    SelectionChanged="OnSelectionChanged" />
+
+</ContentPage>
