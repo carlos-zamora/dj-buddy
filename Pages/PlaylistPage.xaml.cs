@@ -14,6 +14,8 @@ public partial class PlaylistPage : ContentPage
     private List<Track>? _tracks;
     private SortField _sortField = SortField.None;
     private bool _sortAscending = true;
+    private string _searchText = "";
+    private string? _keyFilter;
 
     public PlaylistNode? Node
     {
@@ -55,28 +57,46 @@ public partial class PlaylistPage : ContentPage
 
         bool hasTracks = _tracks?.Count > 0;
         TracksHeader.IsVisible = hasTracks;
+        FilterBar.IsVisible = hasTracks;
         TrackColumnHeaders.IsVisible = hasTracks;
-        BindableLayout.SetItemsSource(TrackList, hasTracks ? GetSortedTracks() : null);
+        BindableLayout.SetItemsSource(TrackList, hasTracks ? GetFilteredAndSortedTracks() : null);
 
         UpdateSortIndicators();
+        UpdateKeyFilterButton();
     }
 
-    private IEnumerable<Track> GetSortedTracks()
+    private IEnumerable<Track> GetFilteredAndSortedTracks()
     {
         if (_tracks == null) return [];
+
+        IEnumerable<Track> filtered = _tracks;
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var search = _searchText.Trim();
+            filtered = filtered.Where(t =>
+                t.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                t.Artist.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrEmpty(_keyFilter))
+        {
+            filtered = filtered.Where(t =>
+                string.Equals(t.Key, _keyFilter, StringComparison.OrdinalIgnoreCase));
+        }
 
         return _sortField switch
         {
             SortField.Title => _sortAscending
-                ? _tracks.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)
-                : _tracks.OrderByDescending(t => t.Name, StringComparer.CurrentCultureIgnoreCase),
+                ? filtered.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)
+                : filtered.OrderByDescending(t => t.Name, StringComparer.CurrentCultureIgnoreCase),
             SortField.Bpm => _sortAscending
-                ? _tracks.OrderBy(t => t.Bpm)
-                : _tracks.OrderByDescending(t => t.Bpm),
+                ? filtered.OrderBy(t => t.Bpm)
+                : filtered.OrderByDescending(t => t.Bpm),
             SortField.Key => _sortAscending
-                ? _tracks.OrderBy(t => t.Key, KeyComparer.Instance)
-                : _tracks.OrderByDescending(t => t.Key, KeyComparer.Instance),
-            _ => _tracks,
+                ? filtered.OrderBy(t => t.Key, KeyComparer.Instance)
+                : filtered.OrderByDescending(t => t.Key, KeyComparer.Instance),
+            _ => filtered,
         };
     }
 
@@ -89,6 +109,93 @@ public partial class PlaylistPage : ContentPage
 
     private string SortIndicator(SortField field) =>
         _sortField != field ? "" : _sortAscending ? " \u25B2" : " \u25BC";
+
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        _searchText = e.NewTextValue ?? "";
+        BuildContent();
+    }
+
+    private void OnKeyFilterButtonClicked(object? sender, EventArgs e)
+    {
+        PopulateKeyGrid();
+        KeyPickerOverlay.IsVisible = true;
+    }
+
+    private void OnKeyPickerDismissed(object? sender, EventArgs e)
+    {
+        KeyPickerOverlay.IsVisible = false;
+    }
+
+    private void OnKeyPickerClear(object? sender, EventArgs e)
+    {
+        _keyFilter = null;
+        KeyPickerOverlay.IsVisible = false;
+        BuildContent();
+    }
+
+    /// <summary>
+    /// Populates the key picker grid with buttons for all 24 Camelot keys (1A–12B).
+    /// Highlights the currently active filter key.
+    /// </summary>
+    private void PopulateKeyGrid()
+    {
+        KeyGrid.Children.Clear();
+        KeyGrid.RowDefinitions.Clear();
+
+        for (int number = 1; number <= 12; number++)
+        {
+            KeyGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+
+            AddKeyButton($"{number}B", number - 1, 0);
+            AddKeyButton($"{number}A", number - 1, 1);
+        }
+    }
+
+    private void AddKeyButton(string key, int row, int col)
+    {
+        bool isSelected = string.Equals(key, _keyFilter, StringComparison.OrdinalIgnoreCase);
+
+        var button = new Button
+        {
+            Text = key,
+            FontSize = 14,
+            HeightRequest = 40,
+            Padding = new Thickness(0),
+            CornerRadius = 6,
+            BackgroundColor = isSelected ? Colors.DodgerBlue : Colors.Transparent,
+            TextColor = isSelected ? Colors.White : Colors.Gray,
+            BorderColor = Colors.Gray,
+            BorderWidth = 1,
+        };
+
+        button.Clicked += (_, _) =>
+        {
+            _keyFilter = key;
+            KeyPickerOverlay.IsVisible = false;
+            BuildContent();
+        };
+
+        KeyGrid.SetRow(button, row);
+        KeyGrid.SetColumn(button, col);
+        KeyGrid.Children.Add(button);
+    }
+
+    private void UpdateKeyFilterButton()
+    {
+        if (string.IsNullOrEmpty(_keyFilter))
+        {
+            KeyFilterButton.Text = "Key";
+            KeyFilterButton.BackgroundColor = Colors.Transparent;
+            KeyFilterButton.TextColor = Colors.Gray;
+        }
+        else
+        {
+            KeyFilterButton.Text = _keyFilter;
+            KeyFilterButton.BackgroundColor = Colors.DodgerBlue;
+            KeyFilterButton.TextColor = Colors.White;
+        }
+    }
 
     private void OnTitleHeaderTapped(object? sender, EventArgs e) => ToggleSort(SortField.Title);
     private void OnBpmHeaderTapped(object? sender, EventArgs e) => ToggleSort(SortField.Bpm);

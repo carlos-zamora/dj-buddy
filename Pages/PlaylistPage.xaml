@@ -36,52 +36,93 @@
         </DataTemplate>
     </ContentPage.Resources>
 
-    <ScrollView>
-        <VerticalStackLayout>
+    <Grid>
+        <!-- Main scrollable content -->
+        <ScrollView>
+            <VerticalStackLayout>
 
-            <!-- Playlists section -->
-            <Label x:Name="PlaylistsHeader" Text="PLAYLISTS"
-                   FontSize="13" FontAttributes="Bold" TextColor="Gray"
-                   Padding="16,16,16,4" IsVisible="False" />
-            <VerticalStackLayout x:Name="NodeList"
-                                 BindableLayout.ItemTemplate="{StaticResource NodeTemplate}" />
+                <!-- Playlists section -->
+                <Label x:Name="PlaylistsHeader" Text="PLAYLISTS"
+                       FontSize="13" FontAttributes="Bold" TextColor="Gray"
+                       Padding="16,16,16,4" IsVisible="False" />
+                <VerticalStackLayout x:Name="NodeList"
+                                     BindableLayout.ItemTemplate="{StaticResource NodeTemplate}" />
 
-            <!-- Tracks section -->
-            <Label x:Name="TracksHeader" Text="TRACKS"
-                   FontSize="13" FontAttributes="Bold" TextColor="Gray"
-                   Padding="16,16,16,4" IsVisible="False" />
+                <!-- Tracks section -->
+                <Label x:Name="TracksHeader" Text="TRACKS"
+                       FontSize="13" FontAttributes="Bold" TextColor="Gray"
+                       Padding="16,16,16,4" IsVisible="False" />
 
-            <!-- Sortable column headers (fixed, not a list item) -->
-            <Grid x:Name="TrackColumnHeaders" ColumnDefinitions="*,60,50"
-                  Padding="16,6" IsVisible="False"
-                  BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
-                <Label x:Name="TitleHeaderLabel" Text="Title" FontSize="13"
-                       FontAttributes="Bold" TextColor="Gray"
-                       VerticalTextAlignment="Center">
-                    <Label.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnTitleHeaderTapped" />
-                    </Label.GestureRecognizers>
-                </Label>
-                <Label x:Name="BpmHeaderLabel" Grid.Column="1" Text="BPM" FontSize="13"
-                       FontAttributes="Bold" TextColor="Gray"
-                       HorizontalTextAlignment="End" VerticalTextAlignment="Center">
-                    <Label.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnBpmHeaderTapped" />
-                    </Label.GestureRecognizers>
-                </Label>
-                <Label x:Name="KeyHeaderLabel" Grid.Column="2" Text="Key" FontSize="13"
-                       FontAttributes="Bold" TextColor="Gray"
-                       HorizontalTextAlignment="End" VerticalTextAlignment="Center">
-                    <Label.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnKeyHeaderTapped" />
-                    </Label.GestureRecognizers>
-                </Label>
-            </Grid>
+                <!-- Filter bar -->
+                <Grid x:Name="FilterBar" ColumnDefinitions="*,Auto" ColumnSpacing="8"
+                      Padding="16,4" IsVisible="False">
+                    <Entry x:Name="SearchEntry" Placeholder="Search title or artist..."
+                           FontSize="14" ClearButtonVisibility="WhileEditing"
+                           TextChanged="OnSearchTextChanged" />
+                    <Button x:Name="KeyFilterButton" Grid.Column="1" Text="Key"
+                            FontSize="13" Padding="12,0" HeightRequest="36"
+                            CornerRadius="6" BackgroundColor="Transparent"
+                            BorderColor="Gray" BorderWidth="1" TextColor="Gray"
+                            Clicked="OnKeyFilterButtonClicked" />
+                </Grid>
 
-            <VerticalStackLayout x:Name="TrackList"
-                                 BindableLayout.ItemTemplate="{StaticResource TrackTemplate}" />
+                <!-- Sortable column headers -->
+                <Grid x:Name="TrackColumnHeaders" ColumnDefinitions="*,60,50"
+                      Padding="16,6" IsVisible="False"
+                      BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
+                    <Label x:Name="TitleHeaderLabel" Text="Title" FontSize="13"
+                           FontAttributes="Bold" TextColor="Gray"
+                           VerticalTextAlignment="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnTitleHeaderTapped" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                    <Label x:Name="BpmHeaderLabel" Grid.Column="1" Text="BPM" FontSize="13"
+                           FontAttributes="Bold" TextColor="Gray"
+                           HorizontalTextAlignment="End" VerticalTextAlignment="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnBpmHeaderTapped" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                    <Label x:Name="KeyHeaderLabel" Grid.Column="2" Text="Key" FontSize="13"
+                           FontAttributes="Bold" TextColor="Gray"
+                           HorizontalTextAlignment="End" VerticalTextAlignment="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnKeyHeaderTapped" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </Grid>
 
-        </VerticalStackLayout>
-    </ScrollView>
+                <VerticalStackLayout x:Name="TrackList"
+                                     BindableLayout.ItemTemplate="{StaticResource TrackTemplate}" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Key picker overlay -->
+        <Grid x:Name="KeyPickerOverlay" IsVisible="False" InputTransparent="False">
+            <!-- Dimmed backdrop — tap to dismiss -->
+            <BoxView Color="#80000000">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnKeyPickerDismissed" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <!-- Popup card -->
+            <Border StrokeShape="RoundRectangle 12"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
+                    HorizontalOptions="Center" VerticalOptions="Center"
+                    Padding="16" MaximumWidthRequest="300">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="Filter by Key" FontSize="18" FontAttributes="Bold"
+                           HorizontalTextAlignment="Center" />
+                    <Grid x:Name="KeyGrid" ColumnDefinitions="*,*"
+                          RowSpacing="6" ColumnSpacing="6" />
+                    <Button Text="Clear" Clicked="OnKeyPickerClear"
+                            BackgroundColor="Transparent" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </Grid>
 
 </ContentPage>
