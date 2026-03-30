@@ -1,21 +1,17 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:local="clr-namespace:dj_buddy.Pages"
              xmlns:root="clr-namespace:dj_buddy"
              x:Class="dj_buddy.Pages.PlaylistPage">
 
     <ContentPage.Resources>
         <root:FolderIconConverter x:Key="FolderIconConverter" />
 
-        <DataTemplate x:Key="HeaderTemplate">
-            <Label Text="{Binding Title}"
-                   FontSize="13" FontAttributes="Bold" TextColor="Gray"
-                   Padding="16,16,16,4" TextTransform="Uppercase" />
-        </DataTemplate>
-
         <DataTemplate x:Key="NodeTemplate">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnNodeTapped" />
+                </Grid.GestureRecognizers>
                 <Label Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}"
                        FontSize="16" VerticalTextAlignment="Center" />
                 <Label Grid.Column="1" Text="{Binding Name}"
@@ -38,11 +34,54 @@
                        HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
             </Grid>
         </DataTemplate>
-
     </ContentPage.Resources>
 
-    <CollectionView x:Name="ContentList"
-                    SelectionMode="Single"
-                    SelectionChanged="OnSelectionChanged" />
+    <ScrollView>
+        <VerticalStackLayout>
+
+            <!-- Playlists section -->
+            <Label x:Name="PlaylistsHeader" Text="PLAYLISTS"
+                   FontSize="13" FontAttributes="Bold" TextColor="Gray"
+                   Padding="16,16,16,4" IsVisible="False" />
+            <VerticalStackLayout x:Name="NodeList"
+                                 BindableLayout.ItemTemplate="{StaticResource NodeTemplate}" />
+
+            <!-- Tracks section -->
+            <Label x:Name="TracksHeader" Text="TRACKS"
+                   FontSize="13" FontAttributes="Bold" TextColor="Gray"
+                   Padding="16,16,16,4" IsVisible="False" />
+
+            <!-- Sortable column headers (fixed, not a list item) -->
+            <Grid x:Name="TrackColumnHeaders" ColumnDefinitions="*,60,50"
+                  Padding="16,6" IsVisible="False"
+                  BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
+                <Label x:Name="TitleHeaderLabel" Text="Title" FontSize="13"
+                       FontAttributes="Bold" TextColor="Gray"
+                       VerticalTextAlignment="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTitleHeaderTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Label x:Name="BpmHeaderLabel" Grid.Column="1" Text="BPM" FontSize="13"
+                       FontAttributes="Bold" TextColor="Gray"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBpmHeaderTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Label x:Name="KeyHeaderLabel" Grid.Column="2" Text="Key" FontSize="13"
+                       FontAttributes="Bold" TextColor="Gray"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnKeyHeaderTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </Grid>
+
+            <VerticalStackLayout x:Name="TrackList"
+                                 BindableLayout.ItemTemplate="{StaticResource TrackTemplate}" />
+
+        </VerticalStackLayout>
+    </ScrollView>
 
 </ContentPage>
