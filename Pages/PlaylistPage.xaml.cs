@@ -10,8 +10,14 @@ namespace dj_buddy.Pages;
 [QueryProperty(nameof(Tracks), "Tracks")]
 public partial class PlaylistPage : ContentPage
 {
+    private static readonly Color SameKeyColor = Color.FromArgb("#3848D868");      // green — harmony
+    private static readonly Color AdjacentKeyColor = Color.FromArgb("#385B9FD4");  // blue — smooth flow
+    private static readonly Color EnergyBoostColor = Color.FromArgb("#38F0883C");  // warm amber — energy up
+    private static readonly Color EnergyDropColor = Color.FromArgb("#38A77BCA");   // cool purple — wind down
+
     private PlaylistNode? _node;
     private List<Track>? _tracks;
+    private Track? _selectedTrack;
     private SortField _sortField = SortField.None;
     private bool _sortAscending = true;
     private string _searchText = "";
@@ -59,10 +65,11 @@ public partial class PlaylistPage : ContentPage
         TracksHeader.IsVisible = hasTracks;
         FilterBar.IsVisible = hasTracks;
         TrackColumnHeaders.IsVisible = hasTracks;
-        BindableLayout.SetItemsSource(TrackList, hasTracks ? GetFilteredAndSortedTracks() : null);
+        BindableLayout.SetItemsSource(TrackList, hasTracks ? GetDisplayItems() : null);
 
         UpdateSortIndicators();
         UpdateKeyFilterButton();
+        UpdateKeyLegend();
     }
 
     private IEnumerable<Track> GetFilteredAndSortedTracks()
@@ -73,10 +80,11 @@ public partial class PlaylistPage : ContentPage
 
         if (!string.IsNullOrWhiteSpace(_searchText))
         {
-            var search = _searchText.Trim();
+            var terms = _searchText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             filtered = filtered.Where(t =>
-                t.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                t.Artist.Contains(search, StringComparison.OrdinalIgnoreCase));
+                terms.All(term =>
+                    t.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    t.Artist.Contains(term, StringComparison.OrdinalIgnoreCase)));
         }
 
         if (!string.IsNullOrEmpty(_keyFilter))
@@ -98,6 +106,106 @@ public partial class PlaylistPage : ContentPage
                 : filtered.OrderByDescending(t => t.Key, KeyComparer.Instance),
             _ => filtered,
         };
+    }
+
+    /// <summary>
+    /// Wraps filtered/sorted tracks with highlight colors based on the current selection.
+    /// Groups: same key, adjacent (±1 / opposite letter), energy boost (+2/+7), energy drop (-2/-7).
+    /// </summary>
+    private List<TrackDisplayItem> GetDisplayItems()
+    {
+        var sameKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var adjacentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var boostKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dropKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (_selectedTrack != null && TryParseCamelotKey(_selectedTrack.Key, out int num, out char letter))
+        {
+            sameKeys.Add(_selectedTrack.Key);
+
+            char opp = letter == 'A' ? 'B' : 'A';
+            adjacentKeys.Add($"{Wrap(num - 1)}{letter}");
+            adjacentKeys.Add($"{Wrap(num + 1)}{letter}");
+            adjacentKeys.Add($"{num}{opp}");
+
+            boostKeys.Add($"{Wrap(num + 2)}{letter}");
+            boostKeys.Add($"{Wrap(num + 7)}{letter}");
+
+            dropKeys.Add($"{Wrap(num - 2)}{letter}");
+            dropKeys.Add($"{Wrap(num - 7)}{letter}");
+        }
+
+        return GetFilteredAndSortedTracks().Select(t =>
+        {
+            Color? color = null;
+            if (_selectedTrack != null && !string.IsNullOrEmpty(t.Key))
+            {
+                if (t == _selectedTrack || sameKeys.Contains(t.Key))
+                    color = SameKeyColor;
+                else if (adjacentKeys.Contains(t.Key))
+                    color = AdjacentKeyColor;
+                else if (boostKeys.Contains(t.Key))
+                    color = EnergyBoostColor;
+                else if (dropKeys.Contains(t.Key))
+                    color = EnergyDropColor;
+            }
+
+            return new TrackDisplayItem(t, color, _selectedTrack != null && t == _selectedTrack);
+        }).ToList();
+    }
+
+    /// <summary>Wraps a Camelot number into the 1–12 range.</summary>
+    private static int Wrap(int n) => (n - 1 + 12) % 12 + 1;
+
+    private static bool TryParseCamelotKey(string? key, out int number, out char letter)
+    {
+        number = 0;
+        letter = ' ';
+        if (string.IsNullOrEmpty(key) || key.Length < 2) return false;
+
+        letter = char.ToUpper(key[^1]);
+        if (letter is not ('A' or 'B')) return false;
+
+        return int.TryParse(key.AsSpan(0, key.Length - 1), out number) && number >= 1 && number <= 12;
+    }
+
+    private void OnTrackTapped(object? sender, EventArgs e)
+    {
+        if (sender is not BindableObject bindable || bindable.BindingContext is not TrackDisplayItem item)
+            return;
+
+        _selectedTrack = _selectedTrack == item.Track ? null : item.Track;
+        BindableLayout.SetItemsSource(TrackList, GetDisplayItems());
+        UpdateKeyLegend();
+    }
+
+    /// <summary>
+    /// Shows or hides the key compatibility legend based on whether a track is selected
+    /// and has a valid Camelot key.
+    /// </summary>
+    private void UpdateKeyLegend()
+    {
+        if (_selectedTrack == null || !TryParseCamelotKey(_selectedTrack.Key, out int num, out char letter))
+        {
+            KeyLegend.IsVisible = false;
+            return;
+        }
+
+        char opp = letter == 'A' ? 'B' : 'A';
+        string adj1 = $"{Wrap(num - 1)}{letter}";
+        string adj2 = $"{Wrap(num + 1)}{letter}";
+        string adj3 = $"{num}{opp}";
+        string boost1 = $"{Wrap(num + 2)}{letter}";
+        string boost2 = $"{Wrap(num + 7)}{letter}";
+        string drop1 = $"{Wrap(num - 2)}{letter}";
+        string drop2 = $"{Wrap(num - 7)}{letter}";
+
+        LegendSameLabel.Text = $"Same key: {_selectedTrack.Key}";
+        LegendAdjacentLabel.Text = $"Adjacent: {adj1}, {adj2}, {adj3}";
+        LegendBoostLabel.Text = $"Energy boost: {boost1}, {boost2}";
+        LegendDropLabel.Text = $"Energy drop: {drop1}, {drop2}";
+
+        KeyLegend.IsVisible = true;
     }
 
     private void UpdateSortIndicators()
@@ -236,6 +344,16 @@ public partial class PlaylistPage : ContentPage
             { "Tracks", resolved },
         });
     }
+}
+
+/// <summary>
+/// Wraps a <see cref="Track"/> with an optional highlight color for display.
+/// </summary>
+public class TrackDisplayItem(Track track, Color? highlightColor, bool isSelected)
+{
+    public Track Track { get; } = track;
+    public Color HighlightColor { get; } = highlightColor ?? Colors.Transparent;
+    public bool IsSelected { get; } = isSelected;
 }
 
 public enum SortField { None, Title, Bpm, Key }
