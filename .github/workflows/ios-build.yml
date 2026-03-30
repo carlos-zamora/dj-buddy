@@ -1,0 +1,127 @@
+name: Build iOS .NET MAUI App
+
+on:
+  workflow_dispatch:
+
+jobs:
+    build-ios:
+        runs-on: macos-latest
+        timeout-minutes: 60
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup .NET
+              uses: actions/setup-dotnet@v4
+              with:
+                  global-json-file: './global.json'
+
+            - name: Install MAUI workload
+              run: dotnet workload install maui
+
+            - name: Restore dependencies
+              run: dotnet restore dj-buddy.csproj
+
+            - name: Update app version
+              run: |
+                # Extract current version using sed (works on macOS)
+                CURRENT_VERSION=$(sed -n 's/.*<ApplicationDisplayVersion>\(.*\)<\/ApplicationDisplayVersion>.*/\1/p' dj-buddy.csproj)
+                echo "Current version: $CURRENT_VERSION"
+                
+                # Split into major, minor, patch
+                IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+                
+                # Increment patch version
+                NEW_PATCH=$((PATCH + 1))
+                NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+                
+                echo "New version: $NEW_VERSION"
+                
+                # Update ApplicationDisplayVersion (semantic version)
+                sed -i '' "s/<ApplicationDisplayVersion>.*<\/ApplicationDisplayVersion>/<ApplicationDisplayVersion>$NEW_VERSION<\/ApplicationDisplayVersion>/" dj-buddy.csproj
+
+                # Update ApplicationVersion (build number = patch version)
+                sed -i '' "s/<ApplicationVersion>.*<\/ApplicationVersion>/<ApplicationVersion>$NEW_PATCH<\/ApplicationVersion>/" dj-buddy.csproj
+
+                echo "Updated ApplicationDisplayVersion to: $NEW_VERSION"
+                echo "Updated ApplicationVersion to: $NEW_PATCH"
+                grep "ApplicationVersion" dj-buddy.csproj
+
+            - name: Decode and install provisioning profile
+              env:
+                APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+              run: |
+                    echo "$APPLE_PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+                    mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+                    cp profile.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/"
+
+            - name: Decode and install signing certificate
+              env:
+                APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+                APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+              run: |
+                KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+                KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+                echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+
+                security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+                security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+                security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+                if [ -n "$APPLE_CERT_PASSWORD" ]; then
+                  security import cert.p12 -P "$APPLE_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH" || \
+                  security import cert.p12 -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+                else
+                  security import cert.p12 -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+                fi
+
+                security list-keychains -d user -s "$KEYCHAIN_PATH"
+                security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+            - name: Build iOS IPA
+              run: |
+                dotnet publish dj-buddy.csproj \
+                  -f net10.0-ios \
+                  -c Release \
+                  -p:RuntimeIdentifier=ios-arm64 \
+                  -p:ArchiveOnBuild=true \
+                  -p:CodesignKey="Apple Distribution" \
+                  -p:CodesignProvision="${{ secrets.APPLE_PROVISIONING_PROFILE_NAME }}"
+                echo "::notice::iOS IPA build completed successfully"
+
+            - name: Upload to App Store Connect
+              timeout-minutes: 15
+              run: |
+                IPA_PATH=$(find . -name "*.ipa" -type f | head -n 1)
+                if [ -z "$IPA_PATH" ]; then
+                  echo "::error::No IPA file found for upload"
+                  exit 1
+                fi
+
+                echo "Uploading IPA to App Store Connect..."
+
+                xcrun altool --upload-app \
+                  --type ios \
+                  --file "$IPA_PATH" \
+                  --username "${{ secrets.APPLE_ID }}" \
+                  --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}"
+
+                echo "::notice::Upload to App Store Connect completed successfully"
+
+            - name: Upload IPA artifact
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                name: iOS-IPA
+                path: '**/*.ipa'
+                retention-days: 7
+                if-no-files-found: warn
+
+            - name: Cleanup
+              if: always()
+              run: |
+                rm -f cert.p12 profile.mobileprovision
+                KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+                security delete-keychain "$KEYCHAIN_PATH" || true
