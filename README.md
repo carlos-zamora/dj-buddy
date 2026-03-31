@@ -17,17 +17,17 @@ A rekordbox.xml browser built with .NET MAUI. Load a rekordbox XML export and na
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/) with the MAUI workload installed
+- [.NET 9 SDK](https://dotnet.microsoft.com/) with the MAUI workload installed
 
 ## Build & Run
 
 ```bash
 # Windows (primary dev target)
-dotnet build -f net10.0-windows10.0.19041.0
-dotnet run -f net10.0-windows10.0.19041.0
+dotnet build -f net9.0-windows10.0.19041.0
+dotnet run -f net9.0-windows10.0.19041.0
 
 # Android
-dotnet build -f net10.0-android
+dotnet build -f net9.0-android
 ```
 
 ## Usage

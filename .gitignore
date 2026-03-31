@@ -1,6 +1,7 @@
 # Build results
 bin/
 obj/
+certs/
 
 # Visual Studio
 .vs/
