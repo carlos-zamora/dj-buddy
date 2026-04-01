@@ -1,0 +1,82 @@
+name: Build Android .NET MAUI App
+
+on:
+  workflow_dispatch:
+
+jobs:
+    build-android:
+        runs-on: ubuntu-latest
+        timeout-minutes: 60
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup .NET
+              uses: actions/setup-dotnet@v4
+              with:
+                  global-json-file: './global.json'
+
+            - name: Install MAUI workload
+              run: dotnet workload install maui-android --version 9.0.200
+
+            - name: Restore dependencies
+              run: dotnet restore dj-buddy.csproj
+
+            - name: Update app version
+              run: |
+                CURRENT_VERSION=$(sed -n 's/.*<ApplicationDisplayVersion>\(.*\)<\/ApplicationDisplayVersion>.*/\1/p' dj-buddy.csproj)
+                echo "Current version: $CURRENT_VERSION"
+
+                IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+                NEW_PATCH=$((PATCH + 1))
+                NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+
+                echo "New version: $NEW_VERSION"
+
+                sed -i "s/<ApplicationDisplayVersion>.*<\/ApplicationDisplayVersion>/<ApplicationDisplayVersion>$NEW_VERSION<\/ApplicationDisplayVersion>/" dj-buddy.csproj
+                sed -i "s/<ApplicationVersion>.*<\/ApplicationVersion>/<ApplicationVersion>$NEW_PATCH<\/ApplicationVersion>/" dj-buddy.csproj
+
+                echo "Updated ApplicationDisplayVersion to: $NEW_VERSION"
+                echo "Updated ApplicationVersion to: $NEW_PATCH"
+                grep "ApplicationVersion" dj-buddy.csproj
+
+            - name: Decode keystore
+              run: |
+                echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > upload-keystore.jks
+
+            - name: Build Android AAB
+              run: |
+                dotnet publish dj-buddy.csproj \
+                  -f net9.0-android \
+                  -c Release \
+                  -p:AndroidPackageFormat=aab \
+                  -p:AndroidKeyStore=true \
+                  -p:AndroidSigningKeyStore=${{ github.workspace }}/upload-keystore.jks \
+                  -p:AndroidSigningKeyAlias=${{ secrets.ANDROID_KEY_ALIAS }} \
+                  -p:AndroidSigningKeyPass=${{ secrets.ANDROID_KEY_PASSWORD }} \
+                  -p:AndroidSigningStorePass=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+                echo "::notice::Android AAB build completed successfully"
+
+            - name: Upload to Google Play
+              uses: r0adkll/upload-google-play@v1
+              with:
+                serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+                packageName: com.carloszamora.dj-buddy
+                releaseFiles: '**/*-Signed.aab'
+                track: internal
+
+            - name: Upload AAB artifact
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                name: Android-AAB
+                path: '**/*.aab'
+                retention-days: 7
+                if-no-files-found: warn
+
+            - name: Cleanup
+              if: always()
+              run: |
+                rm -f upload-keystore.jks
