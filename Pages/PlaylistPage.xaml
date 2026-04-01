@@ -2,12 +2,14 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:root="clr-namespace:dj_buddy"
+             xmlns:models="clr-namespace:dj_buddy.Models"
+             xmlns:pages="clr-namespace:dj_buddy.Pages"
              x:Class="dj_buddy.Pages.PlaylistPage">
 
     <ContentPage.Resources>
         <root:FolderIconConverter x:Key="FolderIconConverter" />
 
-        <DataTemplate x:Key="NodeTemplate">
+        <DataTemplate x:Key="NodeTemplate" x:DataType="models:PlaylistNode">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNodeTapped" />
@@ -19,7 +21,7 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate x:Key="TrackTemplate">
+        <DataTemplate x:Key="TrackTemplate" x:DataType="pages:TrackDisplayItem">
             <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0"
                   BackgroundColor="{Binding HighlightColor}">
                 <Grid.GestureRecognizers>
