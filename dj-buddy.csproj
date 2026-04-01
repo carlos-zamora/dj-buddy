@@ -28,7 +28,7 @@
 		<MauiXamlInflator>SourceGen</MauiXamlInflator>
 
 		<!-- Display name -->
-		<ApplicationTitle>dj-buddy</ApplicationTitle>
+		<ApplicationTitle>DJ Buddy</ApplicationTitle>
 
 		<!-- App Identifier -->
 		<ApplicationId>com.carloszamora.dj-buddy</ApplicationId>
