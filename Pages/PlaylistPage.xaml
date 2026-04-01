@@ -104,27 +104,28 @@
 
                 <!-- Key compatibility legend (visible when a track is selected) -->
                 <Grid x:Name="KeyLegend" IsVisible="False"
-                      ColumnDefinitions="*,*,*,*" Padding="16,6"
+                      ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                      RowSpacing="4" ColumnSpacing="8" Padding="16,6"
                       BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#252525}">
-                    <HorizontalStackLayout Spacing="6">
+                    <HorizontalStackLayout x:Name="LegendSameItem" Spacing="6">
                         <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
                                  Color="#48D868" VerticalOptions="Center" />
                         <Label x:Name="LegendSameLabel" FontSize="11" TextColor="Gray"
                                VerticalTextAlignment="Center" />
                     </HorizontalStackLayout>
-                    <HorizontalStackLayout Grid.Column="1" Spacing="6">
+                    <HorizontalStackLayout x:Name="LegendAdjacentItem" Grid.Column="1" Spacing="6">
                         <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
                                  Color="#5B9FD4" VerticalOptions="Center" />
                         <Label x:Name="LegendAdjacentLabel" FontSize="11" TextColor="Gray"
                                VerticalTextAlignment="Center" />
                     </HorizontalStackLayout>
-                    <HorizontalStackLayout Grid.Column="2" Spacing="6">
+                    <HorizontalStackLayout x:Name="LegendBoostItem" Grid.Row="1" Spacing="6">
                         <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
                                  Color="#F0883C" VerticalOptions="Center" />
                         <Label x:Name="LegendBoostLabel" FontSize="11" TextColor="Gray"
                                VerticalTextAlignment="Center" />
                     </HorizontalStackLayout>
-                    <HorizontalStackLayout Grid.Column="3" Spacing="6">
+                    <HorizontalStackLayout x:Name="LegendDropItem" Grid.Row="1" Grid.Column="1" Spacing="6">
                         <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
                                  Color="#A77BCA" VerticalOptions="Center" />
                         <Label x:Name="LegendDropLabel" FontSize="11" TextColor="Gray"

@@ -22,6 +22,7 @@ public partial class PlaylistPage : ContentPage
     private bool _sortAscending = true;
     private string _searchText = "";
     private string? _keyFilter;
+    private bool? _isNarrowLegend;
 
     public PlaylistNode? Node
     {
@@ -47,6 +48,51 @@ public partial class PlaylistPage : ContentPage
     public PlaylistPage()
     {
         InitializeComponent();
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        UpdateKeyLegendLayout(width);
+    }
+
+    private void UpdateKeyLegendLayout(double width)
+    {
+        bool narrow = width < 500; // portrait phone threshold
+        if (_isNarrowLegend == narrow) return; // no change, skip rebuild
+        _isNarrowLegend = narrow;
+
+        if (narrow)
+        {
+            // 2 columns, 2 rows — items aligned in columns
+            KeyLegend.ColumnDefinitions = [
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+            ];
+            KeyLegend.RowDefinitions = [
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+            ];
+            Grid.SetRow(LegendSameItem, 0);     Grid.SetColumn(LegendSameItem, 0);
+            Grid.SetRow(LegendAdjacentItem, 0); Grid.SetColumn(LegendAdjacentItem, 1);
+            Grid.SetRow(LegendBoostItem, 1);    Grid.SetColumn(LegendBoostItem, 0);
+            Grid.SetRow(LegendDropItem, 1);     Grid.SetColumn(LegendDropItem, 1);
+        }
+        else
+        {
+            // 4 columns, 1 row — all items side by side
+            KeyLegend.ColumnDefinitions = [
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+            ];
+            KeyLegend.RowDefinitions = [new RowDefinition(GridLength.Auto)];
+            Grid.SetRow(LegendSameItem, 0);     Grid.SetColumn(LegendSameItem, 0);
+            Grid.SetRow(LegendAdjacentItem, 0); Grid.SetColumn(LegendAdjacentItem, 1);
+            Grid.SetRow(LegendBoostItem, 0);    Grid.SetColumn(LegendBoostItem, 2);
+            Grid.SetRow(LegendDropItem, 0);     Grid.SetColumn(LegendDropItem, 3);
+        }
     }
 
     /// <summary>
