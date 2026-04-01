@@ -1,0 +1,21 @@
+namespace dj_buddy.Services;
+
+/// <summary>
+/// Default implementation for platforms without sandbox restrictions (Windows, Android).
+/// The bookmark token is just the raw file path.
+/// </summary>
+public class DefaultFileBookmarkService : IFileBookmarkService
+{
+    /// <inheritdoc/>
+    /// <remarks>Returns <paramref name="filePath"/> directly — no serialization needed on this platform.</remarks>
+    public Task<string?> SaveBookmarkAsync(string filePath)
+        => Task.FromResult<string?>(filePath);
+
+    /// <inheritdoc/>
+    public Task<Stream?> OpenBookmarkedFileAsync(string bookmarkToken)
+    {
+        if (!File.Exists(bookmarkToken))
+            return Task.FromResult<Stream?>(null);
+        return Task.FromResult<Stream?>(File.OpenRead(bookmarkToken));
+    }
+}

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using dj_buddy.Services;
+using Microsoft.Extensions.Logging;
 
 namespace dj_buddy
 {
@@ -14,6 +15,13 @@ namespace dj_buddy
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 });
+
+#if IOS || MACCATALYST
+            builder.Services.AddSingleton<IFileBookmarkService, Platforms.iOS.FileBookmarkService>();
+#else
+            builder.Services.AddSingleton<IFileBookmarkService, DefaultFileBookmarkService>();
+#endif
+            builder.Services.AddSingleton<MainPage>();
 
 #if DEBUG
     		builder.Logging.AddDebug();

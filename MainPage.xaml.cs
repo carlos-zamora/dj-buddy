@@ -10,13 +10,16 @@ namespace dj_buddy;
 /// </summary>
 public partial class MainPage : ContentPage
 {
-    private const string PrefKeyFilePath = "rekordbox_file_path";
+    private const string PrefKeyBookmark = "rekordbox_bookmark";
+    private const string PrefKeyDisplayName = "rekordbox_display_name";
 
+    private readonly IFileBookmarkService _bookmarkService;
     private RekordboxLibrary? _library;
 
-    public MainPage()
+    public MainPage(IFileBookmarkService bookmarkService)
     {
         InitializeComponent();
+        _bookmarkService = bookmarkService;
         _ = TryLoadSavedFile();
     }
 
@@ -50,14 +53,15 @@ public partial class MainPage : ContentPage
 
             if (result == null) return;
 
-            var fullPath = result.FullPath;
-
             using var stream = await result.OpenReadAsync();
             _library = await RekordboxParser.ParseAsync(stream);
             LibraryStore.Library = _library;
 
-            Preferences.Set(PrefKeyFilePath, fullPath);
-            ShowLibrary(fullPath);
+            var bookmark = await _bookmarkService.SaveBookmarkAsync(result.FullPath);
+            if (bookmark != null)
+                Preferences.Set(PrefKeyBookmark, bookmark);
+            Preferences.Set(PrefKeyDisplayName, result.FileName);
+            ShowLibrary(result.FileName);
         }
         catch (Exception ex)
         {
@@ -71,33 +75,35 @@ public partial class MainPage : ContentPage
     /// </summary>
     private async Task TryLoadSavedFile()
     {
-        var savedPath = Preferences.Get(PrefKeyFilePath, null as string);
-        if (string.IsNullOrEmpty(savedPath) || !File.Exists(savedPath)) return;
+        var bookmark = Preferences.Get(PrefKeyBookmark, null as string);
+        if (string.IsNullOrEmpty(bookmark)) return;
 
         try
         {
-            using var stream = File.OpenRead(savedPath);
+            using var stream = await _bookmarkService.OpenBookmarkedFileAsync(bookmark);
+            if (stream == null) return;
+
             _library = await RekordboxParser.ParseAsync(stream);
             LibraryStore.Library = _library;
-            ShowLibrary(savedPath);
+            ShowLibrary(Preferences.Get(PrefKeyDisplayName, "rekordbox.xml")!);
         }
         catch
         {
-            // File is corrupt or unreadable — stay on welcome screen
+            // File is corrupt or inaccessible — stay on welcome screen
         }
     }
 
     /// <summary>
     /// Switches from the welcome view to the library view and populates
-    /// the header with the file name and full path.
+    /// the header with the file name.
     /// </summary>
-    /// <param name="filePath">Full path to the loaded rekordbox.xml file.</param>
-    private void ShowLibrary(string filePath)
+    /// <param name="displayName">File name shown in the header.</param>
+    private void ShowLibrary(string displayName)
     {
         if (_library == null) return;
 
-        FileNameLabel.Text = Path.GetFileName(filePath);
-        FilePathLabel.Text = filePath;
+        FileNameLabel.Text = displayName;
+        FilePathLabel.Text = string.Empty;
         PlaylistList.ItemsSource = _library.Root.Children;
 
         WelcomeView.IsVisible = false;
