@@ -47,9 +47,86 @@
         </DataTemplate>
     </ContentPage.Resources>
 
-    <Grid>
-        <!-- Main scrollable content -->
-        <ScrollView>
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Sticky header: filter + column headers + legend -->
+        <VerticalStackLayout Grid.Row="0">
+
+            <!-- Filter bar -->
+            <Grid x:Name="FilterBar" ColumnDefinitions="*,Auto" ColumnSpacing="8"
+                  Padding="16,4" IsVisible="False">
+                <Entry x:Name="SearchEntry" Placeholder="Search title or artist..."
+                       FontSize="14" ClearButtonVisibility="WhileEditing"
+                       TextChanged="OnSearchTextChanged" />
+                <Button x:Name="KeyFilterButton" Grid.Column="1" Text="Key"
+                        FontSize="13" Padding="12,0" HeightRequest="36"
+                        CornerRadius="6" BackgroundColor="Transparent"
+                        BorderColor="Gray" BorderWidth="1" TextColor="Gray"
+                        Clicked="OnKeyFilterButtonClicked" />
+            </Grid>
+
+            <!-- Sortable column headers -->
+            <Grid x:Name="TrackColumnHeaders" ColumnDefinitions="*,60,50"
+                  Padding="16,6" IsVisible="False"
+                  BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
+                <Label x:Name="TitleHeaderLabel" Text="Title" FontSize="13"
+                       FontAttributes="Bold" TextColor="Gray"
+                       VerticalTextAlignment="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTitleHeaderTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Label x:Name="BpmHeaderLabel" Grid.Column="1" Text="BPM" FontSize="13"
+                       FontAttributes="Bold" TextColor="Gray"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBpmHeaderTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Label x:Name="KeyHeaderLabel" Grid.Column="2" Text="Key" FontSize="13"
+                       FontAttributes="Bold" TextColor="Gray"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnKeyHeaderTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </Grid>
+
+            <!-- Key compatibility legend (always visible when tracks are loaded) -->
+            <Grid x:Name="KeyLegend" IsVisible="False"
+                  ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                  RowSpacing="4" ColumnSpacing="8" Padding="16,6"
+                  BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#252525}">
+                <HorizontalStackLayout x:Name="LegendSameItem" Spacing="6">
+                    <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
+                             Color="#48D868" VerticalOptions="Center" />
+                    <Label x:Name="LegendSameLabel" FontSize="11" TextColor="Gray"
+                           VerticalTextAlignment="Center" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout x:Name="LegendAdjacentItem" Grid.Column="1" Spacing="6">
+                    <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
+                             Color="#5B9FD4" VerticalOptions="Center" />
+                    <Label x:Name="LegendAdjacentLabel" FontSize="11" TextColor="Gray"
+                           VerticalTextAlignment="Center" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout x:Name="LegendBoostItem" Grid.Row="1" Spacing="6">
+                    <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
+                             Color="#F0883C" VerticalOptions="Center" />
+                    <Label x:Name="LegendBoostLabel" FontSize="11" TextColor="Gray"
+                           VerticalTextAlignment="Center" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout x:Name="LegendDropItem" Grid.Row="1" Grid.Column="1" Spacing="6">
+                    <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
+                             Color="#A77BCA" VerticalOptions="Center" />
+                    <Label x:Name="LegendDropLabel" FontSize="11" TextColor="Gray"
+                           VerticalTextAlignment="Center" />
+                </HorizontalStackLayout>
+            </Grid>
+
+        </VerticalStackLayout>
+
+        <!-- Scrollable content -->
+        <ScrollView Grid.Row="1">
             <VerticalStackLayout>
 
                 <!-- Playlists section -->
@@ -64,77 +141,6 @@
                        FontSize="13" FontAttributes="Bold" TextColor="Gray"
                        Padding="16,16,16,4" IsVisible="False" />
 
-                <!-- Filter bar -->
-                <Grid x:Name="FilterBar" ColumnDefinitions="*,Auto" ColumnSpacing="8"
-                      Padding="16,4" IsVisible="False">
-                    <Entry x:Name="SearchEntry" Placeholder="Search title or artist..."
-                           FontSize="14" ClearButtonVisibility="WhileEditing"
-                           TextChanged="OnSearchTextChanged" />
-                    <Button x:Name="KeyFilterButton" Grid.Column="1" Text="Key"
-                            FontSize="13" Padding="12,0" HeightRequest="36"
-                            CornerRadius="6" BackgroundColor="Transparent"
-                            BorderColor="Gray" BorderWidth="1" TextColor="Gray"
-                            Clicked="OnKeyFilterButtonClicked" />
-                </Grid>
-
-                <!-- Sortable column headers -->
-                <Grid x:Name="TrackColumnHeaders" ColumnDefinitions="*,60,50"
-                      Padding="16,6" IsVisible="False"
-                      BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
-                    <Label x:Name="TitleHeaderLabel" Text="Title" FontSize="13"
-                           FontAttributes="Bold" TextColor="Gray"
-                           VerticalTextAlignment="Center">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnTitleHeaderTapped" />
-                        </Label.GestureRecognizers>
-                    </Label>
-                    <Label x:Name="BpmHeaderLabel" Grid.Column="1" Text="BPM" FontSize="13"
-                           FontAttributes="Bold" TextColor="Gray"
-                           HorizontalTextAlignment="End" VerticalTextAlignment="Center">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnBpmHeaderTapped" />
-                        </Label.GestureRecognizers>
-                    </Label>
-                    <Label x:Name="KeyHeaderLabel" Grid.Column="2" Text="Key" FontSize="13"
-                           FontAttributes="Bold" TextColor="Gray"
-                           HorizontalTextAlignment="End" VerticalTextAlignment="Center">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnKeyHeaderTapped" />
-                        </Label.GestureRecognizers>
-                    </Label>
-                </Grid>
-
-                <!-- Key compatibility legend (visible when a track is selected) -->
-                <Grid x:Name="KeyLegend" IsVisible="False"
-                      ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
-                      RowSpacing="4" ColumnSpacing="8" Padding="16,6"
-                      BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#252525}">
-                    <HorizontalStackLayout x:Name="LegendSameItem" Spacing="6">
-                        <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
-                                 Color="#48D868" VerticalOptions="Center" />
-                        <Label x:Name="LegendSameLabel" FontSize="11" TextColor="Gray"
-                               VerticalTextAlignment="Center" />
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout x:Name="LegendAdjacentItem" Grid.Column="1" Spacing="6">
-                        <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
-                                 Color="#5B9FD4" VerticalOptions="Center" />
-                        <Label x:Name="LegendAdjacentLabel" FontSize="11" TextColor="Gray"
-                               VerticalTextAlignment="Center" />
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout x:Name="LegendBoostItem" Grid.Row="1" Spacing="6">
-                        <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
-                                 Color="#F0883C" VerticalOptions="Center" />
-                        <Label x:Name="LegendBoostLabel" FontSize="11" TextColor="Gray"
-                               VerticalTextAlignment="Center" />
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout x:Name="LegendDropItem" Grid.Row="1" Grid.Column="1" Spacing="6">
-                        <BoxView WidthRequest="10" HeightRequest="10" CornerRadius="2"
-                                 Color="#A77BCA" VerticalOptions="Center" />
-                        <Label x:Name="LegendDropLabel" FontSize="11" TextColor="Gray"
-                               VerticalTextAlignment="Center" />
-                    </HorizontalStackLayout>
-                </Grid>
-
                 <VerticalStackLayout x:Name="TrackList"
                                      BindableLayout.ItemTemplate="{StaticResource TrackTemplate}" />
 
@@ -142,7 +148,7 @@
         </ScrollView>
 
         <!-- Key picker overlay -->
-        <Grid x:Name="KeyPickerOverlay" IsVisible="False" InputTransparent="False">
+        <Grid x:Name="KeyPickerOverlay" Grid.RowSpan="2" IsVisible="False" InputTransparent="False">
             <!-- Dimmed backdrop — tap to dismiss -->
             <BoxView Color="#80000000">
                 <BoxView.GestureRecognizers>

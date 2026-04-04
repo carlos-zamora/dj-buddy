@@ -111,6 +111,7 @@ public partial class PlaylistPage : ContentPage
         TracksHeader.IsVisible = hasTracks;
         FilterBar.IsVisible = hasTracks;
         TrackColumnHeaders.IsVisible = hasTracks;
+        KeyLegend.IsVisible = hasTracks;
         BindableLayout.SetItemsSource(TrackList, hasTracks ? GetDisplayItems() : null);
 
         UpdateSortIndicators();
@@ -226,14 +227,18 @@ public partial class PlaylistPage : ContentPage
     }
 
     /// <summary>
-    /// Shows or hides the key compatibility legend based on whether a track is selected
-    /// and has a valid Camelot key.
+    /// Updates the key compatibility legend labels. When a track with a valid Camelot key
+    /// is selected, shows the specific compatible keys; otherwise shows generic category labels.
+    /// Visibility is controlled by <see cref="BuildContent"/>.
     /// </summary>
     private void UpdateKeyLegend()
     {
         if (_selectedTrack == null || !TryParseCamelotKey(_selectedTrack.Key, out int num, out char letter))
         {
-            KeyLegend.IsVisible = false;
+            LegendSameLabel.Text = "Same key";
+            LegendAdjacentLabel.Text = "Adjacent keys";
+            LegendBoostLabel.Text = "Energy boost";
+            LegendDropLabel.Text = "Energy drop";
             return;
         }
 
@@ -250,8 +255,6 @@ public partial class PlaylistPage : ContentPage
         LegendAdjacentLabel.Text = $"Adjacent: {adj1}, {adj2}, {adj3}";
         LegendBoostLabel.Text = $"Energy boost: {boost1}, {boost2}";
         LegendDropLabel.Text = $"Energy drop: {drop1}, {drop2}";
-
-        KeyLegend.IsVisible = true;
     }
 
     private void UpdateSortIndicators()
