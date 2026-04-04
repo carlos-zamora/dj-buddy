@@ -65,7 +65,7 @@ public partial class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlert("Error", $"Failed to load file: {ex.Message}", "OK");
+            await DisplayAlertAsync("Error", $"Failed to load file: {ex.Message}", "OK");
         }
     }
 

@@ -5,7 +5,7 @@ on:
 
 jobs:
     build-ios:
-        runs-on: macos-latest
+        runs-on: macos-26-intel
         timeout-minutes: 60
 
         steps:
@@ -18,7 +18,7 @@ jobs:
                   global-json-file: './global.json'
 
             - name: Install MAUI workload
-              run: dotnet workload install maui --version 9.0.200
+              run: dotnet workload install maui --version 10.0.201
 
             - name: Restore dependencies
               run: dotnet restore dj-buddy.csproj
@@ -58,7 +58,7 @@ jobs:
             - name: Build iOS IPA
               run: |
                 dotnet publish dj-buddy.csproj \
-                  -f net9.0-ios \
+                  -f net10.0-ios \
                   -c Release \
                   -p:RuntimeIdentifier=ios-arm64 \
                   -p:ArchiveOnBuild=true \
