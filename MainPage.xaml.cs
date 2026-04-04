@@ -127,8 +127,6 @@ public partial class MainPage : ContentPage
 
     private void RefreshDjBuddySection()
     {
-        var template = CreatePlaylistItemTemplate(enableManagement: true);
-        BindableLayout.SetItemTemplate(DjBuddyPlaylistList, template);
         BindableLayout.SetItemsSource(DjBuddyPlaylistList,
             _djBuddySectionCollapsed ? null : DjBuddyPlaylistStore.DjBuddyFolder.Children);
         DjBuddyCollapseIcon.Text = _djBuddySectionCollapsed ? "\u25B6" : "\u25BC";
@@ -136,71 +134,7 @@ public partial class MainPage : ContentPage
 
     private void RefreshRekordboxSection()
     {
-        var template = CreatePlaylistItemTemplate();
-        BindableLayout.SetItemTemplate(RekordboxPlaylistList, template);
         BindableLayout.SetItemsSource(RekordboxPlaylistList, _library?.Root.Children);
-    }
-
-    /// <summary>
-    /// Creates a DataTemplate for playlist/folder items with tap navigation.
-    /// When <paramref name="enableManagement"/> is true, wraps items in a SwipeView
-    /// with rename/delete actions (used for DJ Buddy playlists).
-    /// </summary>
-    private DataTemplate CreatePlaylistItemTemplate(bool enableManagement = false)
-    {
-        return new DataTemplate(() =>
-        {
-            var iconLabel = new Label { FontSize = 16, VerticalTextAlignment = TextAlignment.Center };
-            iconLabel.SetBinding(Label.TextProperty, new Binding("IsFolder",
-                converter: (IValueConverter)Resources["FolderIconConverter"]));
-
-            var nameLabel = new Label { FontSize = 16, VerticalTextAlignment = TextAlignment.Center };
-            nameLabel.SetBinding(Label.TextProperty, "Name");
-
-            var grid = new Grid
-            {
-                ColumnDefinitions = [
-                    new ColumnDefinition(GridLength.Auto),
-                    new ColumnDefinition(GridLength.Star),
-                ],
-                ColumnSpacing = 8,
-                Padding = new Thickness(16, 12),
-            };
-            grid.Add(iconLabel, 0);
-            grid.Add(nameLabel, 1);
-
-            var tap = new TapGestureRecognizer();
-            tap.Tapped += OnPlaylistItemTapped;
-            grid.GestureRecognizers.Add(tap);
-
-            if (enableManagement)
-            {
-                var secondaryTap = new TapGestureRecognizer { Buttons = ButtonsMask.Secondary };
-                secondaryTap.Tapped += OnDjBuddyPlaylistLongPressed;
-                grid.GestureRecognizers.Add(secondaryTap);
-
-                var swipeView = new SwipeView { Content = grid };
-                var swipeItems = new SwipeItems();
-                var renameItem = new SwipeItem
-                {
-                    Text = "Rename",
-                    BackgroundColor = Colors.DodgerBlue,
-                };
-                renameItem.Invoked += OnDjBuddyPlaylistLongPressed;
-                var deleteItem = new SwipeItem
-                {
-                    Text = "Delete",
-                    BackgroundColor = Colors.Red,
-                };
-                deleteItem.Invoked += OnDjBuddyPlaylistDelete;
-                swipeItems.Add(renameItem);
-                swipeItems.Add(deleteItem);
-                swipeView.RightItems = swipeItems;
-                return swipeView;
-            }
-
-            return grid;
-        });
     }
 
     private void OnDjBuddySectionTapped(object? sender, EventArgs e)

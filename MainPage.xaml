@@ -80,7 +80,33 @@
                     </Grid>
 
                     <!-- DJ BUDDY playlists -->
-                    <VerticalStackLayout x:Name="DjBuddyPlaylistList" />
+                    <VerticalStackLayout x:Name="DjBuddyPlaylistList">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <SwipeView>
+                                    <SwipeView.RightItems>
+                                        <SwipeItems>
+                                            <SwipeItem Text="Rename" BackgroundColor="DodgerBlue"
+                                                       Invoked="OnDjBuddyPlaylistLongPressed" />
+                                            <SwipeItem Text="Delete" BackgroundColor="Red"
+                                                       Invoked="OnDjBuddyPlaylistDelete" />
+                                        </SwipeItems>
+                                    </SwipeView.RightItems>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnPlaylistItemTapped" />
+                                            <TapGestureRecognizer Buttons="Secondary"
+                                                                  Tapped="OnDjBuddyPlaylistLongPressed" />
+                                        </Grid.GestureRecognizers>
+                                        <Label Grid.Column="0" FontSize="16" VerticalTextAlignment="Center"
+                                               Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}" />
+                                        <Label Grid.Column="1" FontSize="16" VerticalTextAlignment="Center"
+                                               Text="{Binding Name}" />
+                                    </Grid>
+                                </SwipeView>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
 
                     <!-- REKORDBOX section header -->
                     <Grid Padding="16,12"
@@ -90,7 +116,21 @@
                     </Grid>
 
                     <!-- Rekordbox playlists -->
-                    <VerticalStackLayout x:Name="RekordboxPlaylistList" />
+                    <VerticalStackLayout x:Name="RekordboxPlaylistList">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnPlaylistItemTapped" />
+                                    </Grid.GestureRecognizers>
+                                    <Label Grid.Column="0" FontSize="16" VerticalTextAlignment="Center"
+                                           Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}" />
+                                    <Label Grid.Column="1" FontSize="16" VerticalTextAlignment="Center"
+                                           Text="{Binding Name}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
 
                 </VerticalStackLayout>
             </ScrollView>

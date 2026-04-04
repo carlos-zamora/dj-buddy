@@ -23,9 +23,18 @@
 
         <DataTemplate x:Key="TrackTemplate" x:DataType="pages:TrackDisplayItem">
             <SwipeView>
+                <SwipeView.LeftItems>
+                    <SwipeItems>
+                        <!-- Swipe - Left: Add Song -->
+                        <SwipeItem Text="➕"
+                                   BackgroundColor="{StaticResource Primary}"
+                                   Invoked="OnAddToSwipeInvoked" />
+                    </SwipeItems>
+                </SwipeView.LeftItems>
                 <SwipeView.RightItems>
                     <SwipeItems>
-                        <SwipeItem Text="Add to..."
+                        <!-- Swipe - Right: Add Song -->
+                        <SwipeItem Text="➕"
                                    BackgroundColor="{StaticResource Primary}"
                                    Invoked="OnAddToSwipeInvoked" />
                     </SwipeItems>
@@ -34,7 +43,10 @@
                 <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0"
                       BackgroundColor="{Binding HighlightColor}">
                     <Grid.GestureRecognizers>
+                        <!-- Tap: See Compatible Songs -->
                         <TapGestureRecognizer Tapped="OnTrackTapped" />
+                        
+                        <!-- Right-Click: Add Song -->
                         <TapGestureRecognizer Tapped="OnTrackRightClicked" Buttons="Secondary" />
                     </Grid.GestureRecognizers>
 
