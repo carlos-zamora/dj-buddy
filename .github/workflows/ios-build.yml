@@ -23,11 +23,6 @@ jobs:
             - name: Restore dependencies
               run: dotnet restore dj-buddy.csproj
 
-            - name: Update app version
-              run: |
-                sed -i '' "s/<ApplicationVersion>.*<\/ApplicationVersion>/<ApplicationVersion>${{ github.run_number }}<\/ApplicationVersion>/" dj-buddy.csproj
-                echo "ApplicationVersion set to ${{ github.run_number }}"
-
             - name: Decode and install provisioning profile
               env:
                 APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
@@ -68,7 +63,8 @@ jobs:
                   -p:RuntimeIdentifier=ios-arm64 \
                   -p:ArchiveOnBuild=true \
                   -p:CodesignKey="Apple Distribution" \
-                  -p:CodesignProvision="${{ secrets.APPLE_PROVISIONING_PROFILE_NAME }}"
+                  -p:CodesignProvision="${{ secrets.APPLE_PROVISIONING_PROFILE_NAME }}" \
+                  -p:ApplicationVersion=${{ github.run_number }}
                 echo "::notice::iOS IPA build completed successfully"
 
             - name: Upload to App Store Connect

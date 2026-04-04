@@ -8,9 +8,9 @@
 	<key>CFBundleName</key>
 	<string>DJ Buddy</string>
 
-	<!-- Avoids App Store export compliance questions - false=no custom encryption -->
+	<!-- No custom encryption used - only standard OS/HTTPS, exempt from export compliance -->
 	<key>ITSAppUsesNonExemptEncryption</key>
-	<true />
+	<false/>
 
 	<!-- Share files to/from app via Finder/iTunes -->
 	<key>UIFileSharingEnabled</key>
