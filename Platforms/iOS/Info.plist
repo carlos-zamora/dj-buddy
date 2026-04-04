@@ -24,38 +24,46 @@
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
+			<!-- Human-readable name for this document type, shown in the "Open with" menu -->
 			<key>CFBundleTypeName</key>
 			<string>rekordbox Library</string>
+			<!-- UTIs this app can open; public.xml covers any .xml file -->
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.xml</string>
 			</array>
+			<!-- App's role for this type: Viewer = can open but not edit/create -->
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
+			<!-- Priority when multiple apps can handle this type:
+			     Owner = primary handler, Alternate = secondary, None = last resort.
+			     Alternate is correct since .xml is a generic type owned by other apps. -->
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
 		</dict>
 	</array>
 
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	
+
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>
 		<integer>2</integer>
 	</array>
-	
+
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
 	</array>
-	
+
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	
+
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -63,7 +71,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	
+
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
 </dict>
