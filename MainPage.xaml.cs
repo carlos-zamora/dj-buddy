@@ -68,7 +68,7 @@ public partial class MainPage : ContentPage
             if (bookmark != null)
                 Preferences.Set(PrefKeyBookmark, bookmark);
             Preferences.Set(PrefKeyDisplayName, result.FileName);
-            ShowLibrary(result.FileName);
+            ShowLibrary();
         }
         catch (Exception ex)
         {
@@ -92,7 +92,7 @@ public partial class MainPage : ContentPage
 
             _library = await RekordboxParser.ParseAsync(stream);
             LibraryStore.Library = _library;
-            ShowLibrary(Preferences.Get(PrefKeyDisplayName, "rekordbox.xml")!);
+            ShowLibrary();
         }
         catch
         {
@@ -104,13 +104,12 @@ public partial class MainPage : ContentPage
     /// Switches from the welcome view to the library view and populates
     /// the header and playlist sections.
     /// </summary>
-    /// <param name="displayName">File name shown in the header.</param>
-    private void ShowLibrary(string displayName)
+    private void ShowLibrary()
     {
         if (_library == null) return;
 
-        FileNameLabel.Text = displayName;
-        FilePathLabel.Text = string.Empty;
+        FileNameLabel.Text = Preferences.Get(PrefKeyDisplayName, "rekordbox.xml");
+        FilePathLabel.Text = Preferences.Get(PrefKeyBookmark, string.Empty);
 
         RefreshDjBuddySection();
         RefreshRekordboxSection();

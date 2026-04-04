@@ -41,10 +41,11 @@
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Padding="16,12">
                 <VerticalStackLayout Spacing="2" VerticalOptions="Center">
                     <Label x:Name="FileNameLabel"
-                           FontSize="16" FontAttributes="Bold" />
+                           FontSize="16" FontAttributes="Bold"
+                           LineBreakMode="TailTruncation"/>
                     <Label x:Name="FilePathLabel"
                            FontSize="12" TextColor="Gray"
-                           LineBreakMode="MiddleTruncation" />
+                           LineBreakMode="TailTruncation" />
                 </VerticalStackLayout>
 
                 <Button Grid.Column="1"
