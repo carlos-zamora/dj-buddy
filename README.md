@@ -12,22 +12,24 @@ A rekordbox.xml browser built with .NET MAUI. Load a rekordbox XML export and na
   - Adjacent keys (blue) — smooth transitions
   - Energy boost keys (amber) — raise the energy
   - Energy drop keys (purple) — wind down
+- **Favorites & doubles** — Swipe right on a track (or right-click on desktop) to add it to Favorites or a custom "doubles" playlist. Playlists are saved locally and persist across sessions
+- **Export to rekordbox** — Export your DJ Buddy playlists back into rekordbox.xml as a `DJ_BUDDY` folder. A backup is created automatically before writing
 - **Auto-reload** — Remembers the last loaded file and reloads it on startup
 - **Cross-platform** — Targets Windows, Android, iOS, and macOS via .NET MAUI
 
 ## Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/) with the MAUI workload installed
+- [.NET 10 SDK](https://dotnet.microsoft.com/) with the MAUI workload installed
 
 ## Build & Run
 
 ```bash
 # Windows (primary dev target)
-dotnet build -f net9.0-windows10.0.19041.0
-dotnet run -f net9.0-windows10.0.19041.0
+dotnet build -f net10.0-windows10.0.19041.0
+dotnet run -f net10.0-windows10.0.19041.0
 
 # Android
-dotnet build -f net9.0-android
+dotnet build -f net10.0-android
 ```
 
 ## Usage
@@ -37,6 +39,8 @@ dotnet build -f net9.0-android
 3. Browse playlists and folders from the tree view
 4. Inside a playlist, tap a track to see harmonic key compatibility highlights
 5. Use the search bar, key filter, and column headers to find the right next track
+6. Swipe right on a track to add it to Favorites or a doubles playlist
+7. Click **Export** to write your DJ Buddy playlists into the rekordbox.xml
 
 ## Project Structure
 
@@ -46,8 +50,10 @@ dotnet build -f net9.0-android
 │   ├── PlaylistNode.cs       # Playlist/folder tree node
 │   └── RekordboxLibrary.cs   # Parsed library (tracks + playlist tree)
 ├── Services/
-│   ├── RekordboxParser.cs    # Streaming XML parser for rekordbox.xml
-│   └── LibraryStore.cs       # Static singleton holding the current library
+│   ├── RekordboxParser.cs       # Streaming XML parser for rekordbox.xml
+│   ├── RekordboxExporter.cs     # Exports DJ_BUDDY playlists into rekordbox.xml
+│   ├── DjBuddyPlaylistStore.cs  # Static store for favorites & doubles (JSON persistence)
+│   └── LibraryStore.cs          # Static singleton holding the current library
 ├── Pages/
 │   └── PlaylistPage.xaml.cs  # Playlist view with sorting, search, key highlights
 ├── MainPage.xaml.cs          # Welcome screen + top-level library view

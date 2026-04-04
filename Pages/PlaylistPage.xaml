@@ -22,28 +22,39 @@
         </DataTemplate>
 
         <DataTemplate x:Key="TrackTemplate" x:DataType="pages:TrackDisplayItem">
-            <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0"
-                  BackgroundColor="{Binding HighlightColor}">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnTrackTapped" />
-                </Grid.GestureRecognizers>
+            <SwipeView>
+                <SwipeView.RightItems>
+                    <SwipeItems>
+                        <SwipeItem Text="Add to..."
+                                   BackgroundColor="{StaticResource Primary}"
+                                   Invoked="OnAddToSwipeInvoked" />
+                    </SwipeItems>
+                </SwipeView.RightItems>
 
-                <!-- Selection accent bar -->
-                <BoxView Color="{StaticResource Primary}" IsVisible="{Binding IsSelected}"
-                         WidthRequest="4" HorizontalOptions="Start" />
+                <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0"
+                      BackgroundColor="{Binding HighlightColor}">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnTrackTapped" />
+                        <TapGestureRecognizer Tapped="OnTrackRightClicked" Buttons="Secondary" />
+                    </Grid.GestureRecognizers>
 
-                <VerticalStackLayout Grid.Column="1" Spacing="2" Padding="12,8">
-                    <Label Text="{Binding Track.Name}" FontSize="15"
-                           LineBreakMode="TailTruncation" />
-                    <Label Text="{Binding Track.Artist}" FontSize="12" TextColor="Gray"
-                           LineBreakMode="TailTruncation" />
-                </VerticalStackLayout>
+                    <!-- Selection accent bar -->
+                    <BoxView Color="{StaticResource Primary}" IsVisible="{Binding IsSelected}"
+                             WidthRequest="4" HorizontalOptions="Start" />
 
-                <Label Grid.Column="2" Text="{Binding Track.BpmDisplay}" FontSize="14"
-                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
-                <Label Grid.Column="3" Text="{Binding Track.KeyDisplay}" FontSize="14"
-                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
-            </Grid>
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" Padding="12,8">
+                        <Label Text="{Binding Track.Name}" FontSize="15"
+                               LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding Track.Artist}" FontSize="12" TextColor="Gray"
+                               LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+
+                    <Label Grid.Column="2" Text="{Binding Track.BpmDisplay}" FontSize="14"
+                           HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+                    <Label Grid.Column="3" Text="{Binding Track.KeyDisplay}" FontSize="14"
+                           HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+                </Grid>
+            </SwipeView>
         </DataTemplate>
     </ContentPage.Resources>
 

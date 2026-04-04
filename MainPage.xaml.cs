@@ -15,12 +15,19 @@ public partial class MainPage : ContentPage
 
     private readonly IFileBookmarkService _bookmarkService;
     private RekordboxLibrary? _library;
+    private bool _djBuddySectionCollapsed;
 
     public MainPage(IFileBookmarkService bookmarkService)
     {
         InitializeComponent();
         _bookmarkService = bookmarkService;
-        _ = TryLoadSavedFile();
+        _ = InitAsync();
+    }
+
+    private async Task InitAsync()
+    {
+        await DjBuddyPlaylistStore.LoadAsync();
+        await TryLoadSavedFile();
     }
 
     private async void OnPickFileClicked(object? sender, EventArgs e)
@@ -95,7 +102,7 @@ public partial class MainPage : ContentPage
 
     /// <summary>
     /// Switches from the welcome view to the library view and populates
-    /// the header with the file name.
+    /// the header and playlist sections.
     /// </summary>
     /// <param name="displayName">File name shown in the header.</param>
     private void ShowLibrary(string displayName)
@@ -104,24 +111,153 @@ public partial class MainPage : ContentPage
 
         FileNameLabel.Text = displayName;
         FilePathLabel.Text = string.Empty;
-        PlaylistList.ItemsSource = _library.Root.Children;
+
+        RefreshDjBuddySection();
+        RefreshRekordboxSection();
 
         WelcomeView.IsVisible = false;
         LibraryView.IsVisible = true;
     }
 
-    /// <summary>
-    /// Handles selecting a playlist/folder entry. Resolves the node's track keys
-    /// into full Track objects and navigates to the PlaylistPage.
-    /// </summary>
-    private async void OnPlaylistSelected(object? sender, SelectionChangedEventArgs e)
+    protected override void OnAppearing()
     {
-        if (e.CurrentSelection.FirstOrDefault() is not PlaylistNode node) return;
+        base.OnAppearing();
+        if (_library != null)
+            RefreshDjBuddySection();
+    }
 
-        PlaylistList.SelectedItem = null;
+    private void RefreshDjBuddySection()
+    {
+        var template = CreatePlaylistItemTemplate(enableManagement: true);
+        BindableLayout.SetItemTemplate(DjBuddyPlaylistList, template);
+        BindableLayout.SetItemsSource(DjBuddyPlaylistList,
+            _djBuddySectionCollapsed ? null : DjBuddyPlaylistStore.DjBuddyFolder.Children);
+        DjBuddyCollapseIcon.Text = _djBuddySectionCollapsed ? "\u25B6" : "\u25BC";
+    }
+
+    private void RefreshRekordboxSection()
+    {
+        var template = CreatePlaylistItemTemplate();
+        BindableLayout.SetItemTemplate(RekordboxPlaylistList, template);
+        BindableLayout.SetItemsSource(RekordboxPlaylistList, _library?.Root.Children);
+    }
+
+    /// <summary>
+    /// Creates a DataTemplate for playlist/folder items with tap navigation.
+    /// When <paramref name="enableManagement"/> is true, wraps items in a SwipeView
+    /// with rename/delete actions (used for DJ Buddy playlists).
+    /// </summary>
+    private DataTemplate CreatePlaylistItemTemplate(bool enableManagement = false)
+    {
+        return new DataTemplate(() =>
+        {
+            var iconLabel = new Label { FontSize = 16, VerticalTextAlignment = TextAlignment.Center };
+            iconLabel.SetBinding(Label.TextProperty, new Binding("IsFolder",
+                converter: (IValueConverter)Resources["FolderIconConverter"]));
+
+            var nameLabel = new Label { FontSize = 16, VerticalTextAlignment = TextAlignment.Center };
+            nameLabel.SetBinding(Label.TextProperty, "Name");
+
+            var grid = new Grid
+            {
+                ColumnDefinitions = [
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star),
+                ],
+                ColumnSpacing = 8,
+                Padding = new Thickness(16, 12),
+            };
+            grid.Add(iconLabel, 0);
+            grid.Add(nameLabel, 1);
+
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += OnPlaylistItemTapped;
+            grid.GestureRecognizers.Add(tap);
+
+            if (enableManagement)
+            {
+                var secondaryTap = new TapGestureRecognizer { Buttons = ButtonsMask.Secondary };
+                secondaryTap.Tapped += OnDjBuddyPlaylistLongPressed;
+                grid.GestureRecognizers.Add(secondaryTap);
+
+                var swipeView = new SwipeView { Content = grid };
+                var swipeItems = new SwipeItems();
+                var renameItem = new SwipeItem
+                {
+                    Text = "Rename",
+                    BackgroundColor = Colors.DodgerBlue,
+                };
+                renameItem.Invoked += OnDjBuddyPlaylistLongPressed;
+                var deleteItem = new SwipeItem
+                {
+                    Text = "Delete",
+                    BackgroundColor = Colors.Red,
+                };
+                deleteItem.Invoked += OnDjBuddyPlaylistDelete;
+                swipeItems.Add(renameItem);
+                swipeItems.Add(deleteItem);
+                swipeView.RightItems = swipeItems;
+                return swipeView;
+            }
+
+            return grid;
+        });
+    }
+
+    private void OnDjBuddySectionTapped(object? sender, EventArgs e)
+    {
+        _djBuddySectionCollapsed = !_djBuddySectionCollapsed;
+        RefreshDjBuddySection();
+    }
+
+    /// <summary>
+    /// Handles swipe-rename or right-click on a DJ Buddy playlist. Shows a prompt
+    /// to rename it. Favorites cannot be renamed.
+    /// </summary>
+    private async void OnDjBuddyPlaylistLongPressed(object? sender, EventArgs e)
+    {
+        var node = (sender as BindableObject)?.BindingContext as PlaylistNode;
+        if (node == null || node.Name == "Favorites") return;
+
+        var newName = await DisplayPromptAsync("Rename Playlist", "Enter new name:",
+            initialValue: node.Name);
+        if (string.IsNullOrWhiteSpace(newName) || newName == node.Name) return;
+
+        DjBuddyPlaylistStore.RenamePlaylist(node.Name, newName);
+        await DjBuddyPlaylistStore.SaveAsync();
+        RefreshDjBuddySection();
+    }
+
+    /// <summary>
+    /// Handles swipe-delete on a DJ Buddy playlist. Confirms before removing.
+    /// Favorites cannot be deleted.
+    /// </summary>
+    private async void OnDjBuddyPlaylistDelete(object? sender, EventArgs e)
+    {
+        var node = (sender as BindableObject)?.BindingContext as PlaylistNode;
+        if (node == null || node.Name == "Favorites") return;
+
+        bool confirm = await DisplayAlertAsync("Delete Playlist",
+            $"Delete \"{node.Name}\"? This cannot be undone.",
+            "Delete", "Cancel");
+        if (!confirm) return;
+
+        DjBuddyPlaylistStore.RemovePlaylist(node.Name);
+        await DjBuddyPlaylistStore.SaveAsync();
+        RefreshDjBuddySection();
+    }
+
+    /// <summary>
+    /// Handles tap on any playlist/folder item. Resolves track keys
+    /// and navigates to PlaylistPage.
+    /// </summary>
+    private async void OnPlaylistItemTapped(object? sender, EventArgs e)
+    {
+        if (sender is not BindableObject bindable || bindable.BindingContext is not PlaylistNode node)
+            return;
 
         var tracks = node.TrackKeys
-            .Select(k => _library!.Tracks.GetValueOrDefault(k))
+            .Select(k => _library?.Tracks.GetValueOrDefault(k))
             .Where(t => t != null)
             .Cast<Track>()
             .ToList();
@@ -131,6 +267,41 @@ public partial class MainPage : ContentPage
             { "Node", node },
             { "Tracks", tracks },
         });
+    }
+
+    private async void OnExportClicked(object? sender, EventArgs e)
+    {
+        var bookmark = Preferences.Get(PrefKeyBookmark, null as string);
+        if (bookmark == null || _library == null)
+        {
+            await DisplayAlertAsync("Export", "No library loaded.", "OK");
+            return;
+        }
+
+        bool confirm = await DisplayAlertAsync("Export",
+            "This will add DJ_BUDDY playlists to your rekordbox.xml and create a backup (rekordbox_backup.xml). Continue?",
+            "Export", "Cancel");
+        if (!confirm) return;
+
+        try
+        {
+            await _bookmarkService.ExportWithBackupAsync(bookmark,
+                stream => RekordboxExporter.ExportAsync(stream, DjBuddyPlaylistStore.DjBuddyFolder));
+
+            await DisplayAlertAsync("Export Complete",
+                "DJ_BUDDY playlists added to rekordbox.xml.\n\n" +
+                "To import into rekordbox:\n" +
+                "1. Open rekordbox\n" +
+                "2. Preferences \u2192 Advanced \u2192 Database \u2192 rekordbox xml\n" +
+                "3. Set \"Imported Library\" to your rekordbox.xml\n" +
+                "4. In the sidebar under \"xml\", find DJ_BUDDY\n" +
+                "5. Right-click a playlist \u2192 Import Playlist",
+                "OK");
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("Error", $"Export failed: {ex.Message}", "OK");
+        }
     }
 }
 

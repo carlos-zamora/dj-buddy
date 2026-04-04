@@ -40,9 +40,52 @@ public class FileBookmarkService : IFileBookmarkService
     /// </remarks>
     public Task<Stream?> OpenBookmarkedFileAsync(string bookmarkToken)
     {
-        var data = NSData.FromArray(Convert.FromBase64String(bookmarkToken));
-        if (data == null)
+        var url = ResolveBookmark(bookmarkToken);
+        if (url?.Path == null || !File.Exists(url.Path))
             return Task.FromResult<Stream?>(null);
+
+        return Task.FromResult<Stream?>(File.OpenRead(url.Path));
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Resolves the bookmark, starts security-scoped access, creates a backup,
+    /// opens a read/write stream, runs the export action, then stops access.
+    /// </remarks>
+    public async Task ExportWithBackupAsync(string bookmarkToken, Func<Stream, Task> exportAction)
+    {
+        var url = ResolveBookmark(bookmarkToken)
+            ?? throw new FileNotFoundException("Could not resolve the bookmarked file.");
+
+        if (url.Path == null || !File.Exists(url.Path))
+            throw new FileNotFoundException("The rekordbox.xml file was not found.");
+
+        url.StartAccessingSecurityScopedResource();
+        try
+        {
+            var dir = Path.GetDirectoryName(url.Path)!;
+            var name = Path.GetFileNameWithoutExtension(url.Path);
+            var ext = Path.GetExtension(url.Path);
+            var backupPath = Path.Combine(dir, $"{name}_backup{ext}");
+
+            File.Copy(url.Path, backupPath, overwrite: true);
+
+            using var stream = new FileStream(url.Path, FileMode.Open, FileAccess.ReadWrite);
+            await exportAction(stream);
+        }
+        finally
+        {
+            url.StopAccessingSecurityScopedResource();
+        }
+    }
+
+    /// <summary>
+    /// Resolves a Base64-encoded bookmark token to an <see cref="NSUrl"/>.
+    /// </summary>
+    private static NSUrl? ResolveBookmark(string bookmarkToken)
+    {
+        var data = NSData.FromArray(Convert.FromBase64String(bookmarkToken));
+        if (data == null) return null;
 
         var url = NSUrl.FromBookmarkData(
             data,
@@ -51,9 +94,6 @@ public class FileBookmarkService : IFileBookmarkService
             out _,
             out var error);
 
-        if (error != null || url?.Path == null || !File.Exists(url.Path))
-            return Task.FromResult<Stream?>(null);
-
-        return Task.FromResult<Stream?>(File.OpenRead(url.Path));
+        return error != null ? null : url;
     }
 }

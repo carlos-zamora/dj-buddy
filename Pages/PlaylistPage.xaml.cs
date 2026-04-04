@@ -1,4 +1,5 @@
 using dj_buddy.Models;
+using dj_buddy.Services;
 
 namespace dj_buddy.Pages;
 
@@ -224,6 +225,60 @@ public partial class PlaylistPage : ContentPage
         _selectedTrack = _selectedTrack == item.Track ? null : item.Track;
         BindableLayout.SetItemsSource(TrackList, GetDisplayItems());
         UpdateKeyLegend();
+    }
+
+    private async void OnAddToSwipeInvoked(object? sender, EventArgs e)
+    {
+        var item = (sender as SwipeItem)?.BindingContext as TrackDisplayItem
+                ?? (sender as BindableObject)?.BindingContext as TrackDisplayItem;
+        if (item != null)
+            await ShowAddToPlaylistSheet(item);
+    }
+
+    private async void OnTrackRightClicked(object? sender, EventArgs e)
+    {
+        if (sender is not BindableObject bindable || bindable.BindingContext is not TrackDisplayItem item)
+            return;
+        await ShowAddToPlaylistSheet(item);
+    }
+
+    /// <summary>
+    /// Shows an action sheet letting the user add a track to Favorites,
+    /// an existing DJ Buddy playlist, or a newly created one.
+    /// </summary>
+    private async Task ShowAddToPlaylistSheet(TrackDisplayItem item)
+    {
+        var options = new List<string> { "\u2B50 Favorites" };
+        options.AddRange(DjBuddyPlaylistStore.GetPlaylistNames());
+        options.Add("+ New playlist...");
+
+        var trackName = item.Track.Name;
+        if (trackName.Length > 30)
+            trackName = trackName[..27] + "...";
+
+        var result = await DisplayActionSheetAsync(
+            $"Add \"{trackName}\"", "Cancel", null, options.ToArray());
+
+        if (string.IsNullOrEmpty(result) || result == "Cancel") return;
+
+        if (result == "+ New playlist...")
+        {
+            var name = await DisplayPromptAsync("New Playlist", "Enter playlist name:",
+                initialValue: item.Track.Name);
+            if (string.IsNullOrWhiteSpace(name)) return;
+            DjBuddyPlaylistStore.CreatePlaylist(name);
+            DjBuddyPlaylistStore.AddTrackToPlaylist(name, item.Track.TrackId);
+        }
+        else if (result == "\u2B50 Favorites")
+        {
+            DjBuddyPlaylistStore.AddTrackToFavorites(item.Track.TrackId);
+        }
+        else
+        {
+            DjBuddyPlaylistStore.AddTrackToPlaylist(result, item.Track.TrackId);
+        }
+
+        await DjBuddyPlaylistStore.SaveAsync();
     }
 
     /// <summary>
