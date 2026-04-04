@@ -127,6 +127,7 @@ public partial class MainPage : ContentPage
 
     private void RefreshDjBuddySection()
     {
+        BindableLayout.SetItemsSource(DjBuddyPlaylistList, null);
         BindableLayout.SetItemsSource(DjBuddyPlaylistList,
             _djBuddySectionCollapsed ? null : DjBuddyPlaylistStore.DjBuddyFolder.Children);
         DjBuddyCollapseIcon.Text = _djBuddySectionCollapsed ? "\u25B6" : "\u25BC";
@@ -144,14 +145,52 @@ public partial class MainPage : ContentPage
     }
 
     /// <summary>
-    /// Handles swipe-rename or right-click on a DJ Buddy playlist. Shows a prompt
-    /// to rename it. Favorites cannot be renamed.
+    /// Handles swipe-rename on a DJ Buddy playlist (touch/mobile). Shows a rename prompt.
+    /// Favorites cannot be renamed and their swipe item is hidden, but guard anyway.
     /// </summary>
-    private async void OnDjBuddyPlaylistLongPressed(object? sender, EventArgs e)
+    private async void OnDjBuddySwipeRename(object? sender, EventArgs e)
     {
         var node = (sender as BindableObject)?.BindingContext as PlaylistNode;
         if (node == null || node.Name == "Favorites") return;
+        await RenamePlaylistAsync(node);
+    }
 
+    /// <summary>
+    /// Handles right-click on a DJ Buddy playlist (desktop). Shows an action sheet
+    /// with Rename and Delete options. Favorites have no options and are ignored.
+    /// </summary>
+    private async void OnDjBuddyRightClicked(object? sender, EventArgs e)
+    {
+        // Buttons.Secondary fires on both recognizers on touch idioms — guard to desktop only.
+        var idiom = DeviceInfo.Idiom;
+        if (idiom == DeviceIdiom.Phone || idiom == DeviceIdiom.Tablet) return;
+
+        var node = (sender as BindableObject)?.BindingContext as PlaylistNode;
+        if (node == null || node.Name == "Favorites") return;
+
+        string? action = await DisplayActionSheetAsync(node.Name, "Cancel", null, "Rename", "Delete");
+        if (action == "Rename")
+            await RenamePlaylistAsync(node);
+        else if (action == "Delete")
+            await DeletePlaylistAsync(node);
+    }
+
+    /// <summary>
+    /// Handles swipe-delete on a DJ Buddy playlist (touch/mobile). Confirms before removing.
+    /// Favorites cannot be deleted and their swipe item is hidden, but guard anyway.
+    /// </summary>
+    private async void OnDjBuddyPlaylistDelete(object? sender, EventArgs e)
+    {
+        var node = (sender as BindableObject)?.BindingContext as PlaylistNode;
+        if (node == null || node.Name == "Favorites") return;
+        await DeletePlaylistAsync(node);
+    }
+
+    /// <summary>
+    /// Shows a rename prompt for the given playlist node and saves on confirmation.
+    /// </summary>
+    private async Task RenamePlaylistAsync(PlaylistNode node)
+    {
         var newName = await DisplayPromptAsync("Rename Playlist", "Enter new name:",
             initialValue: node.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == node.Name) return;
@@ -162,14 +201,10 @@ public partial class MainPage : ContentPage
     }
 
     /// <summary>
-    /// Handles swipe-delete on a DJ Buddy playlist. Confirms before removing.
-    /// Favorites cannot be deleted.
+    /// Shows a delete confirmation for the given playlist node and removes it on confirmation.
     /// </summary>
-    private async void OnDjBuddyPlaylistDelete(object? sender, EventArgs e)
+    private async Task DeletePlaylistAsync(PlaylistNode node)
     {
-        var node = (sender as BindableObject)?.BindingContext as PlaylistNode;
-        if (node == null || node.Name == "Favorites") return;
-
         bool confirm = await DisplayAlertAsync("Delete Playlist",
             $"Delete \"{node.Name}\"? This cannot be undone.",
             "Delete", "Cancel");
@@ -245,6 +280,19 @@ public class FolderIconConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
         => value is true ? "\U0001F4C1" : "\U0001F3B5";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Returns true when the bound Name is not "Favorites". Used to hide swipe actions
+/// (Rename, Delete) on the built-in Favorites playlist.
+/// </summary>
+public class IsNotFavoritesConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+        => value is string name && name != "Favorites";
 
     public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
         => throw new NotSupportedException();

@@ -8,6 +8,7 @@
 
     <ContentPage.Resources>
         <local:FolderIconConverter x:Key="FolderIconConverter" />
+        <local:IsNotFavoritesConverter x:Key="IsNotFavoritesConverter" />
     </ContentPage.Resources>
 
     <Grid>
@@ -87,16 +88,20 @@
                                     <SwipeView.RightItems>
                                         <SwipeItems>
                                             <SwipeItem Text="Rename" BackgroundColor="DodgerBlue"
-                                                       Invoked="OnDjBuddyPlaylistLongPressed" />
+                                                       IsVisible="{Binding Name, Converter={StaticResource IsNotFavoritesConverter}}"
+                                                       Invoked="OnDjBuddySwipeRename" />
                                             <SwipeItem Text="Delete" BackgroundColor="Red"
+                                                       IsVisible="{Binding Name, Converter={StaticResource IsNotFavoritesConverter}}"
                                                        Invoked="OnDjBuddyPlaylistDelete" />
                                         </SwipeItems>
                                     </SwipeView.RightItems>
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
                                         <Grid.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnPlaylistItemTapped" />
+                                            
+                                            <!--Desktop Right-Click: context menu-->
                                             <TapGestureRecognizer Buttons="Secondary"
-                                                                  Tapped="OnDjBuddyPlaylistLongPressed" />
+                                                                  Tapped="OnDjBuddyRightClicked" />
                                         </Grid.GestureRecognizers>
                                         <Label Grid.Column="0" FontSize="16" VerticalTextAlignment="Center"
                                                Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}" />

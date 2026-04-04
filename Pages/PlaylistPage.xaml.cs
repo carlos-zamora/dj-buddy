@@ -237,6 +237,13 @@ public partial class PlaylistPage : ContentPage
 
     private async void OnTrackRightClicked(object? sender, EventArgs e)
     {
+        // Buttons.Secondary is not supported on touch idioms — both recognizers fire on a
+        // normal tap, which would open the popup instead of just selecting the track.
+        // Swipe handles "add" on Phone/Tablet; this handler is Desktop-only.
+        var idiom = DeviceInfo.Idiom;
+        if (idiom == DeviceIdiom.Phone || idiom == DeviceIdiom.Tablet)
+            return;
+
         if (sender is not BindableObject bindable || bindable.BindingContext is not TrackDisplayItem item)
             return;
         await ShowAddToPlaylistSheet(item);
