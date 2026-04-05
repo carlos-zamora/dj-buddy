@@ -21,11 +21,15 @@ public interface IFileBookmarkService
     Task<Stream?> OpenBookmarkedFileAsync(string bookmarkToken);
 
     /// <summary>
-    /// Creates a backup of the bookmarked file (appending "_backup" before the extension),
-    /// then opens a read/write stream so the caller can modify the file in place.
-    /// The <paramref name="exportAction"/> receives the stream to perform the actual export.
+    /// Reads the bookmarked file, passes it to <paramref name="exportAction"/> to produce
+    /// the exported bytes, then saves the result to a user-accessible location.
+    /// On desktop platforms the original is backed up in place; on iOS a document picker
+    /// is presented so the user can choose the destination.
     /// </summary>
     /// <param name="bookmarkToken">Bookmark token from <see cref="SaveBookmarkAsync"/>.</param>
-    /// <param name="exportAction">Async action that reads and rewrites the file via the stream.</param>
-    Task ExportWithBackupAsync(string bookmarkToken, Func<Stream, Task> exportAction);
+    /// <param name="exportAction">
+    /// Async function that receives the source file as a readable stream and returns
+    /// the exported XML content as a byte array.
+    /// </param>
+    Task ExportAndSaveAsync(string bookmarkToken, Func<Stream, Task<byte[]>> exportAction);
 }

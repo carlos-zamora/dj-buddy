@@ -247,13 +247,13 @@ public partial class MainPage : ContentPage
         }
 
         bool confirm = await DisplayAlertAsync("Export",
-            "This will add DJ_BUDDY playlists to your rekordbox.xml and create a backup (rekordbox_backup.xml). Continue?",
+            "This will inject DJ_BUDDY playlists into a copy of your rekordbox.xml. The original file is kept as a backup. Continue?",
             "Export", "Cancel");
         if (!confirm) return;
 
         try
         {
-            await _bookmarkService.ExportWithBackupAsync(bookmark,
+            await _bookmarkService.ExportAndSaveAsync(bookmark,
                 stream => RekordboxExporter.ExportAsync(stream, DjBuddyPlaylistStore.DjBuddyFolder));
 
             await DisplayAlertAsync("Export Complete",

@@ -20,7 +20,7 @@ public class DefaultFileBookmarkService : IFileBookmarkService
     }
 
     /// <inheritdoc/>
-    public async Task ExportWithBackupAsync(string bookmarkToken, Func<Stream, Task> exportAction)
+    public async Task ExportAndSaveAsync(string bookmarkToken, Func<Stream, Task<byte[]>> exportAction)
     {
         if (!File.Exists(bookmarkToken))
             throw new FileNotFoundException("The rekordbox.xml file was not found.", bookmarkToken);
@@ -32,7 +32,10 @@ public class DefaultFileBookmarkService : IFileBookmarkService
 
         File.Copy(bookmarkToken, backupPath, overwrite: true);
 
-        using var stream = new FileStream(bookmarkToken, FileMode.Open, FileAccess.ReadWrite);
-        await exportAction(stream);
+        byte[] exported;
+        using (var readStream = File.OpenRead(bookmarkToken))
+            exported = await exportAction(readStream);
+
+        await File.WriteAllBytesAsync(bookmarkToken, exported);
     }
 }

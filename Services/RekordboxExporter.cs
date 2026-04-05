@@ -10,16 +10,16 @@ namespace dj_buddy.Services;
 public static class RekordboxExporter
 {
     /// <summary>
-    /// Reads a rekordbox.xml from <paramref name="stream"/>, injects the
+    /// Reads a rekordbox.xml from <paramref name="input"/>, injects the
     /// <paramref name="djBuddyFolder"/> into the ROOT playlist node
-    /// (replacing any existing DJ_BUDDY node), and writes the result back
-    /// to <paramref name="stream"/>.
+    /// (replacing any existing DJ_BUDDY node), and returns the result as a byte array.
     /// </summary>
-    /// <param name="stream">A read/write seekable stream to the rekordbox.xml file.</param>
+    /// <param name="input">Readable stream of the source rekordbox.xml.</param>
     /// <param name="djBuddyFolder">The DJ_BUDDY folder to inject.</param>
-    public static async Task ExportAsync(Stream stream, PlaylistNode djBuddyFolder)
+    /// <returns>The modified XML content as a UTF-8 byte array.</returns>
+    public static async Task<byte[]> ExportAsync(Stream input, PlaylistNode djBuddyFolder)
     {
-        var doc = await XDocument.LoadAsync(stream, LoadOptions.PreserveWhitespace, CancellationToken.None);
+        var doc = await XDocument.LoadAsync(input, LoadOptions.PreserveWhitespace, CancellationToken.None);
 
         var root = doc.Descendants("NODE")
             .FirstOrDefault(n => n.Attribute("Name")?.Value == "ROOT"
@@ -39,10 +39,9 @@ public static class RekordboxExporter
         var count = root.Elements("NODE").Count();
         root.SetAttributeValue("Count", count);
 
-        // Write back
-        stream.SetLength(0);
-        stream.Seek(0, SeekOrigin.Begin);
-        await doc.SaveAsync(stream, SaveOptions.None, CancellationToken.None);
+        using var ms = new MemoryStream();
+        await doc.SaveAsync(ms, SaveOptions.None, CancellationToken.None);
+        return ms.ToArray();
     }
 
     /// <summary>
