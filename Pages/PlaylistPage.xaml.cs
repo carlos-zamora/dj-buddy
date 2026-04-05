@@ -18,6 +18,7 @@ public partial class PlaylistPage : ContentPage
 
     private PlaylistNode? _node;
     private List<Track>? _tracks;
+    private bool _isDjBuddyPlaylist;
     private Track? _selectedTrack;
     private SortField _sortField = SortField.None;
     private bool _sortAscending = true;
@@ -31,6 +32,7 @@ public partial class PlaylistPage : ContentPage
         set
         {
             _node = value;
+            _isDjBuddyPlaylist = _node != null && DjBuddyPlaylistStore.DjBuddyFolder.Children.Contains(_node);
             Title = _node?.Name ?? "Playlist";
             BuildContent();
         }
@@ -113,6 +115,8 @@ public partial class PlaylistPage : ContentPage
         FilterBar.IsVisible = hasTracks;
         TrackColumnHeaders.IsVisible = hasTracks;
         KeyLegend.IsVisible = hasTracks;
+        var trackTemplate = (DataTemplate)Resources[_isDjBuddyPlaylist ? "DjBuddyTrackTemplate" : "TrackTemplate"];
+        BindableLayout.SetItemTemplate(TrackList, trackTemplate);
         BindableLayout.SetItemsSource(TrackList, hasTracks ? GetDisplayItems() : null);
 
         UpdateSortIndicators();
@@ -233,6 +237,18 @@ public partial class PlaylistPage : ContentPage
                 ?? (sender as BindableObject)?.BindingContext as TrackDisplayItem;
         if (item != null)
             await ShowAddToPlaylistSheet(item);
+    }
+
+    private async void OnRemoveFromDjBuddyInvoked(object? sender, EventArgs e)
+    {
+        var item = (sender as SwipeItem)?.BindingContext as TrackDisplayItem
+                ?? (sender as BindableObject)?.BindingContext as TrackDisplayItem;
+        if (item == null || _node == null) return;
+
+        _node.TrackKeys.Remove(item.Track.TrackId);
+        _tracks?.Remove(item.Track);
+        await DjBuddyPlaylistStore.SaveAsync();
+        BuildContent();
     }
 
     private async void OnTrackRightClicked(object? sender, EventArgs e)

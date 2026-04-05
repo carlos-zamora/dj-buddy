@@ -90,7 +90,7 @@
                                             <SwipeItem Text="Rename" BackgroundColor="DodgerBlue"
                                                        IsVisible="{Binding Name, Converter={StaticResource IsNotFavoritesConverter}}"
                                                        Invoked="OnDjBuddySwipeRename" />
-                                            <SwipeItem Text="Delete" BackgroundColor="Red"
+                                            <SwipeItem Text="🗑" BackgroundColor="Red"
                                                        IsVisible="{Binding Name, Converter={StaticResource IsNotFavoritesConverter}}"
                                                        Invoked="OnDjBuddyPlaylistDelete" />
                                         </SwipeItems>
