@@ -3,11 +3,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:dj_buddy"
              xmlns:models="clr-namespace:dj_buddy.Models"
+             xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
              x:Class="dj_buddy.MainPage"
              Title="DJ Buddy">
 
     <ContentPage.Resources>
-        <local:FolderIconConverter x:Key="FolderIconConverter" />
+        <local:InvertBoolConverter x:Key="InvertBoolConverter" />
         <local:IsNotFavoritesConverter x:Key="IsNotFavoritesConverter" />
     </ContentPage.Resources>
 
@@ -30,6 +31,8 @@
 
             <Button Grid.Row="2"
                     Text="Load rekordbox.xml"
+                    ImageSource="{mi:Material Icon=FolderOpen}"
+                    ContentLayout="Left, 8"
                     Clicked="OnPickFileClicked"
                     HorizontalOptions="Center" />
         </Grid>
@@ -52,12 +55,16 @@
                 <Button Grid.Column="1"
                         Text="Export" FontSize="13"
                         Padding="12,6"
+                        ImageSource="{mi:Material Icon=FileUpload}"
+                        ContentLayout="Left, 6"
                         Clicked="OnExportClicked"
                         VerticalOptions="Center" />
 
                 <Button Grid.Column="2"
-                        Text="Change File" FontSize="13"
+                        Text="Browse..." FontSize="13"
                         Padding="12,6"
+                        ImageSource="{mi:Material Icon=FolderOpen}"
+                        ContentLayout="Left, 6"
                         Clicked="OnPickFileClicked"
                         VerticalOptions="Center" />
             </Grid>
@@ -73,8 +80,9 @@
                             <TapGestureRecognizer Tapped="OnDjBuddySectionTapped" />
                         </Grid.GestureRecognizers>
                         <HorizontalStackLayout Spacing="8">
-                            <Label x:Name="DjBuddyCollapseIcon" Text="&#x25BC;"
-                                   FontSize="12" VerticalTextAlignment="Center" TextColor="Gray" />
+                            <Label x:Name="DjBuddyCollapseIcon"
+                                   FontFamily="MaterialIcons-Regular"
+                                   FontSize="14" VerticalTextAlignment="Center" TextColor="Gray" />
                             <Label Text="DJ BUDDY" FontSize="13" FontAttributes="Bold"
                                    TextColor="Gray" VerticalTextAlignment="Center" />
                         </HorizontalStackLayout>
@@ -87,10 +95,12 @@
                                 <SwipeView>
                                     <SwipeView.RightItems>
                                         <SwipeItems>
-                                            <SwipeItem Text="Rename" BackgroundColor="DodgerBlue"
+                                            <SwipeItem IconImageSource="{mi:Material Icon=Edit}"
+                                                       BackgroundColor="DodgerBlue"
                                                        IsVisible="{Binding Name, Converter={StaticResource IsNotFavoritesConverter}}"
                                                        Invoked="OnDjBuddySwipeRename" />
-                                            <SwipeItem Text="🗑" BackgroundColor="Red"
+                                            <SwipeItem IconImageSource="{mi:Material Icon=Delete}"
+                                                       BackgroundColor="Red"
                                                        IsVisible="{Binding Name, Converter={StaticResource IsNotFavoritesConverter}}"
                                                        Invoked="OnDjBuddyPlaylistDelete" />
                                         </SwipeItems>
@@ -103,8 +113,12 @@
                                             <TapGestureRecognizer Buttons="Secondary"
                                                                   Tapped="OnDjBuddyRightClicked" />
                                         </Grid.GestureRecognizers>
-                                        <Label Grid.Column="0" FontSize="16" VerticalTextAlignment="Center"
-                                               Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}" />
+                                        <Grid Grid.Column="0" WidthRequest="26" VerticalOptions="Center">
+                                            <mi:MauiIcon Icon="{mi:Material Icon=Folder}" IconSize="20"
+                                                         IsVisible="{Binding IsFolder}" />
+                                            <mi:MauiIcon Icon="{mi:Material Icon=MusicNote}" IconSize="20"
+                                                         IsVisible="{Binding IsFolder, Converter={StaticResource InvertBoolConverter}}" />
+                                        </Grid>
                                         <Label Grid.Column="1" FontSize="16" VerticalTextAlignment="Center"
                                                Text="{Binding Name}" />
                                     </Grid>
@@ -128,8 +142,12 @@
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnPlaylistItemTapped" />
                                     </Grid.GestureRecognizers>
-                                    <Label Grid.Column="0" FontSize="16" VerticalTextAlignment="Center"
-                                           Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}" />
+                                    <Grid Grid.Column="0" WidthRequest="26" VerticalOptions="Center">
+                                        <mi:MauiIcon Icon="{mi:Material Icon=Folder}" IconSize="20"
+                                                     IsVisible="{Binding IsFolder}" />
+                                        <mi:MauiIcon Icon="{mi:Material Icon=MusicNote}" IconSize="20"
+                                                     IsVisible="{Binding IsFolder, Converter={StaticResource InvertBoolConverter}}" />
+                                    </Grid>
                                     <Label Grid.Column="1" FontSize="16" VerticalTextAlignment="Center"
                                            Text="{Binding Name}" />
                                 </Grid>

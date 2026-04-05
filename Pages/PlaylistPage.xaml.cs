@@ -1,5 +1,6 @@
 using dj_buddy.Models;
 using dj_buddy.Services;
+using MauiIcons.Core;
 
 namespace dj_buddy.Pages;
 
@@ -51,6 +52,8 @@ public partial class PlaylistPage : ContentPage
     public PlaylistPage()
     {
         InitializeComponent();
+        // Workaround for MauiIcons URL-style namespace: https://github.com/AathifMahir/MauiIcons#workaround
+        _ = new MauiIcon();
     }
 
     protected override void OnSizeAllocated(double width, double height)

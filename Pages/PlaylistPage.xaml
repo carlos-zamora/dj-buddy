@@ -4,18 +4,23 @@
              xmlns:root="clr-namespace:dj_buddy"
              xmlns:models="clr-namespace:dj_buddy.Models"
              xmlns:pages="clr-namespace:dj_buddy.Pages"
+             xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
              x:Class="dj_buddy.Pages.PlaylistPage">
 
     <ContentPage.Resources>
-        <root:FolderIconConverter x:Key="FolderIconConverter" />
+        <root:InvertBoolConverter x:Key="InvertBoolConverter" />
 
         <DataTemplate x:Key="NodeTemplate" x:DataType="models:PlaylistNode">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNodeTapped" />
                 </Grid.GestureRecognizers>
-                <Label Text="{Binding IsFolder, Converter={StaticResource FolderIconConverter}}"
-                       FontSize="16" VerticalTextAlignment="Center" />
+                <Grid WidthRequest="26" VerticalOptions="Center">
+                    <mi:MauiIcon Icon="{mi:Material Icon=Folder}" IconSize="20"
+                                 IsVisible="{Binding IsFolder}" />
+                    <mi:MauiIcon Icon="{mi:Material Icon=MusicNote}" IconSize="20"
+                                 IsVisible="{Binding IsFolder, Converter={StaticResource InvertBoolConverter}}" />
+                </Grid>
                 <Label Grid.Column="1" Text="{Binding Name}"
                        FontSize="16" VerticalTextAlignment="Center" />
             </Grid>
@@ -26,7 +31,7 @@
                 <SwipeView.LeftItems>
                     <SwipeItems>
                         <!-- Swipe - Left: Add Song -->
-                        <SwipeItem Text="➕"
+                        <SwipeItem IconImageSource="{mi:Material Icon=Add}"
                                    BackgroundColor="#2ECC71"
                                    Invoked="OnAddToSwipeInvoked" />
                     </SwipeItems>
@@ -34,7 +39,7 @@
                 <SwipeView.RightItems>
                     <SwipeItems>
                         <!-- Swipe - Right: Add Song -->
-                        <SwipeItem Text="➕"
+                        <SwipeItem IconImageSource="{mi:Material Icon=Add}"
                                    BackgroundColor="#2ECC71"
                                    Invoked="OnAddToSwipeInvoked" />
                     </SwipeItems>
@@ -74,7 +79,7 @@
                 <SwipeView.RightItems>
                     <SwipeItems>
                         <!-- Swipe - Right: Remove from DJ Buddy playlist -->
-                        <SwipeItem Text="🗑"
+                        <SwipeItem IconImageSource="{mi:Material Icon=Delete}"
                                    BackgroundColor="Red"
                                    Invoked="OnRemoveFromDjBuddyInvoked" />
                     </SwipeItems>

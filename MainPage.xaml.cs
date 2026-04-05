@@ -1,5 +1,7 @@
 using dj_buddy.Models;
 using dj_buddy.Services;
+using MauiIcons.Core;
+using MauiIcons.Material;
 
 namespace dj_buddy;
 
@@ -20,6 +22,8 @@ public partial class MainPage : ContentPage
     public MainPage(IFileBookmarkService bookmarkService)
     {
         InitializeComponent();
+        // Workaround for MauiIcons URL-style namespace: https://github.com/AathifMahir/MauiIcons#workaround
+        _ = new MauiIcon();
         _bookmarkService = bookmarkService;
         _ = InitAsync();
     }
@@ -130,7 +134,9 @@ public partial class MainPage : ContentPage
         BindableLayout.SetItemsSource(DjBuddyPlaylistList, null);
         BindableLayout.SetItemsSource(DjBuddyPlaylistList,
             _djBuddySectionCollapsed ? null : DjBuddyPlaylistStore.DjBuddyFolder.Children);
-        DjBuddyCollapseIcon.Text = _djBuddySectionCollapsed ? "\u25B6" : "\u25BC";
+        DjBuddyCollapseIcon.Text = _djBuddySectionCollapsed
+            ? ((char)(int)MaterialIcons.ChevronRight).ToString()
+            : ((char)(int)MaterialIcons.ExpandMore).ToString();
     }
 
     private void RefreshRekordboxSection()
@@ -274,18 +280,6 @@ public partial class MainPage : ContentPage
 }
 
 /// <summary>
-/// Converts an IsFolder boolean to a folder or music note emoji.
-/// </summary>
-public class FolderIconConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-        => value is true ? "\U0001F4C1" : "\U0001F3B5";
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-        => throw new NotSupportedException();
-}
-
-/// <summary>
 /// Returns true when the bound Name is not "Favorites". Used to hide swipe actions
 /// (Rename, Delete) on the built-in Favorites playlist.
 /// </summary>
@@ -293,6 +287,16 @@ public class IsNotFavoritesConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
         => value is string name && name != "Favorites";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Inverts a boolean binding value.</summary>
+public class InvertBoolConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+        => value is not true;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
         => throw new NotSupportedException();

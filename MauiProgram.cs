@@ -1,4 +1,5 @@
 ﻿using dj_buddy.Services;
+using MauiIcons.Material;
 using Microsoft.Extensions.Logging;
 
 namespace dj_buddy
@@ -10,6 +11,7 @@ namespace dj_buddy
             var builder = MauiApp.CreateBuilder();
             builder
                 .UseMauiApp<App>()
+                .UseMaterialMauiIcons()
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
