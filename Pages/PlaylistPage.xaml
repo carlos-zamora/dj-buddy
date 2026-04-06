@@ -195,26 +195,25 @@
         </VerticalStackLayout>
 
         <!-- Scrollable content -->
-        <ScrollView x:Name="ContentScrollView" Grid.Row="1">
-            <VerticalStackLayout>
+        <Grid Grid.Row="1" RowDefinitions="Auto,*">
 
-                <!-- Playlists section -->
+            <!-- Playlists section (small, non-scrolling) -->
+            <VerticalStackLayout Grid.Row="0">
                 <Label x:Name="PlaylistsHeader" Text="PLAYLISTS"
                        FontSize="13" FontAttributes="Bold" TextColor="Gray"
                        Padding="16,16,16,4" IsVisible="False" />
                 <VerticalStackLayout x:Name="NodeList"
                                      BindableLayout.ItemTemplate="{StaticResource NodeTemplate}" />
-
-                <!-- Tracks section -->
                 <Label x:Name="TracksHeader" Text="TRACKS"
                        FontSize="13" FontAttributes="Bold" TextColor="Gray"
                        Padding="16,16,16,4" IsVisible="False" />
-
-                <VerticalStackLayout x:Name="TrackList"
-                                     BindableLayout.ItemTemplate="{StaticResource TrackTemplate}" />
-
             </VerticalStackLayout>
-        </ScrollView>
+
+            <!-- Track list with virtualization -->
+            <CollectionView x:Name="TrackList" Grid.Row="1"
+                            ItemSizingStrategy="MeasureFirstItem" />
+
+        </Grid>
 
     </Grid>
 

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows.Input;
 using CommunityToolkit.Maui;
 using CommunityToolkit.Maui.Extensions;
@@ -22,6 +23,7 @@ public partial class PlaylistPage : ContentPage
 
     private PlaylistNode? _node;
     private List<Track>? _tracks;
+    private List<TrackDisplayItem>? _displayItems;
     private bool _isDjBuddyPlaylist;
     private Track? _selectedTrack;
     private SortField _sortField = SortField.None;
@@ -134,8 +136,9 @@ public partial class PlaylistPage : ContentPage
         TrackColumnHeaders.IsVisible = hasTracks;
         KeyLegend.IsVisible = hasTracks;
         var trackTemplate = (DataTemplate)Resources[_isDjBuddyPlaylist ? "DjBuddyTrackTemplate" : "TrackTemplate"];
-        BindableLayout.SetItemTemplate(TrackList, trackTemplate);
-        BindableLayout.SetItemsSource(TrackList, hasTracks ? GetDisplayItems() : null);
+        TrackList.ItemTemplate = trackTemplate;
+        _displayItems = hasTracks ? GetDisplayItems() : null;
+        TrackList.ItemsSource = _displayItems;
 
         UpdateSortIndicators();
         UpdateKeyFilterButton();
@@ -179,49 +182,76 @@ public partial class PlaylistPage : ContentPage
     }
 
     /// <summary>
+    /// Builds Camelot key sets for the currently selected track.
+    /// All sets are empty when no track is selected or its key is unparseable.
+    /// </summary>
+    private void BuildKeyGroups(
+        out HashSet<string> sameKeys,
+        out HashSet<string> adjacentKeys,
+        out HashSet<string> boostKeys,
+        out HashSet<string> dropKeys)
+    {
+        sameKeys    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        adjacentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        boostKeys   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        dropKeys    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (_selectedTrack == null || !TryParseCamelotKey(_selectedTrack.Key, out int num, out char letter))
+            return;
+
+        sameKeys.Add(_selectedTrack.Key);
+        char opp = letter == 'A' ? 'B' : 'A';
+        adjacentKeys.Add($"{Wrap(num - 1)}{letter}");
+        adjacentKeys.Add($"{Wrap(num + 1)}{letter}");
+        adjacentKeys.Add($"{num}{opp}");
+        boostKeys.Add($"{Wrap(num + 2)}{letter}");
+        boostKeys.Add($"{Wrap(num + 7)}{letter}");
+        dropKeys.Add($"{Wrap(num - 2)}{letter}");
+        dropKeys.Add($"{Wrap(num - 7)}{letter}");
+    }
+
+    /// <summary>
+    /// Returns the highlight color for a track given the current key groups, or null for no highlight.
+    /// </summary>
+    private Color? HighlightColorFor(Track t,
+        HashSet<string> sameKeys, HashSet<string> adjacentKeys,
+        HashSet<string> boostKeys, HashSet<string> dropKeys)
+    {
+        if (_selectedTrack == null || string.IsNullOrEmpty(t.Key)) return null;
+        if (t == _selectedTrack || sameKeys.Contains(t.Key))  return SameKeyColor;
+        if (adjacentKeys.Contains(t.Key))                      return AdjacentKeyColor;
+        if (boostKeys.Contains(t.Key))                         return EnergyBoostColor;
+        if (dropKeys.Contains(t.Key))                          return EnergyDropColor;
+        return null;
+    }
+
+    /// <summary>
     /// Wraps filtered/sorted tracks with highlight colors based on the current selection.
     /// Groups: same key, adjacent (±1 / opposite letter), energy boost (+2/+7), energy drop (-2/-7).
     /// </summary>
     private List<TrackDisplayItem> GetDisplayItems()
     {
-        var sameKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var adjacentKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var boostKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var dropKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        BuildKeyGroups(out var sameKeys, out var adjacentKeys, out var boostKeys, out var dropKeys);
+        return GetFilteredAndSortedTracks()
+            .Select(t => new TrackDisplayItem(t,
+                HighlightColorFor(t, sameKeys, adjacentKeys, boostKeys, dropKeys),
+                _selectedTrack != null && t == _selectedTrack))
+            .ToList();
+    }
 
-        if (_selectedTrack != null && TryParseCamelotKey(_selectedTrack.Key, out int num, out char letter))
+    /// <summary>
+    /// Updates highlight colors and selection state on the existing display items in-place.
+    /// Avoids replacing ItemsSource (which resets CollectionView scroll position).
+    /// </summary>
+    private void RefreshHighlightColors()
+    {
+        if (_displayItems == null) return;
+        BuildKeyGroups(out var sameKeys, out var adjacentKeys, out var boostKeys, out var dropKeys);
+        foreach (var di in _displayItems)
         {
-            sameKeys.Add(_selectedTrack.Key);
-
-            char opp = letter == 'A' ? 'B' : 'A';
-            adjacentKeys.Add($"{Wrap(num - 1)}{letter}");
-            adjacentKeys.Add($"{Wrap(num + 1)}{letter}");
-            adjacentKeys.Add($"{num}{opp}");
-
-            boostKeys.Add($"{Wrap(num + 2)}{letter}");
-            boostKeys.Add($"{Wrap(num + 7)}{letter}");
-
-            dropKeys.Add($"{Wrap(num - 2)}{letter}");
-            dropKeys.Add($"{Wrap(num - 7)}{letter}");
+            di.HighlightColor = HighlightColorFor(di.Track, sameKeys, adjacentKeys, boostKeys, dropKeys) ?? Colors.Transparent;
+            di.IsSelected = _selectedTrack != null && di.Track == _selectedTrack;
         }
-
-        return GetFilteredAndSortedTracks().Select(t =>
-        {
-            Color? color = null;
-            if (_selectedTrack != null && !string.IsNullOrEmpty(t.Key))
-            {
-                if (t == _selectedTrack || sameKeys.Contains(t.Key))
-                    color = SameKeyColor;
-                else if (adjacentKeys.Contains(t.Key))
-                    color = AdjacentKeyColor;
-                else if (boostKeys.Contains(t.Key))
-                    color = EnergyBoostColor;
-                else if (dropKeys.Contains(t.Key))
-                    color = EnergyDropColor;
-            }
-
-            return new TrackDisplayItem(t, color, _selectedTrack != null && t == _selectedTrack);
-        }).ToList();
     }
 
     /// <summary>Wraps a Camelot number into the 1–12 range.</summary>
@@ -245,7 +275,7 @@ public partial class PlaylistPage : ContentPage
             return;
 
         _selectedTrack = _selectedTrack == item.Track ? null : item.Track;
-        BindableLayout.SetItemsSource(TrackList, GetDisplayItems());
+        RefreshHighlightColors();
         UpdateKeyLegend();
     }
 
@@ -424,21 +454,19 @@ public partial class PlaylistPage : ContentPage
 
     /// <summary>
     /// Scrolls the selected track into view after a sort or filter rebuilds the list.
-    /// Yields once to allow BindableLayout to populate children before scrolling.
+    /// Delays one timer tick so the CollectionView layout pass for the new ItemsSource
+    /// completes before ScrollTo is called (Task.Yield is not enough).
     /// </summary>
     private async Task ScrollToSelectedAsync()
     {
-        if (_selectedTrack == null) return;
+        if (_selectedTrack == null || _displayItems == null) return;
 
-        // Yield so BindableLayout has a chance to populate TrackList.Children.
-        await Task.Yield();
+        await Task.Delay(1);
 
-        var sorted = GetFilteredAndSortedTracks().ToList();
-        var index = sorted.IndexOf(_selectedTrack);
-        if (index < 0 || index >= TrackList.Children.Count) return;
+        var index = _displayItems.FindIndex(i => i.Track == _selectedTrack);
+        if (index < 0) return;
 
-        if (TrackList.Children[index] is not Element view) return;
-        await ContentScrollView.ScrollToAsync(view, ScrollToPosition.MakeVisible, animated: true);
+        TrackList.ScrollTo(index, position: ScrollToPosition.MakeVisible, animate: true);
     }
 
     /// <summary>
@@ -467,12 +495,28 @@ public partial class PlaylistPage : ContentPage
 
 /// <summary>
 /// Wraps a <see cref="Track"/> with an optional highlight color for display.
+/// Implements <see cref="INotifyPropertyChanged"/> so highlight and selection state
+/// can be updated in-place without replacing the CollectionView's ItemsSource.
 /// </summary>
-public class TrackDisplayItem(Track track, Color? highlightColor, bool isSelected)
+public class TrackDisplayItem(Track track, Color? highlightColor, bool isSelected) : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public Track Track { get; } = track;
-    public Color HighlightColor { get; } = highlightColor ?? Colors.Transparent;
-    public bool IsSelected { get; } = isSelected;
+
+    private Color _highlightColor = highlightColor ?? Colors.Transparent;
+    public Color HighlightColor
+    {
+        get => _highlightColor;
+        set { _highlightColor = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HighlightColor))); }
+    }
+
+    private bool _isSelected = isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { _isSelected = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected))); }
+    }
 }
 
 public enum SortField { None, Title, Bpm, Key }

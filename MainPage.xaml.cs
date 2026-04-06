@@ -213,6 +213,24 @@ public partial class MainPage : ContentPage
     }
 
     /// <summary>
+    /// Handles tap on the Collection entry. Navigates to PlaylistPage with all
+    /// tracks in the library, allowing the user to search and filter the full collection.
+    /// </summary>
+    private async void OnCollectionTapped(object? sender, EventArgs e)
+    {
+        if (_library == null) return;
+
+        var collectionNode = new PlaylistNode { Name = "Collection", IsFolder = false };
+        var tracks = _library.Tracks.Values.ToList();
+
+        await Shell.Current.GoToAsync("playlist", new Dictionary<string, object>
+        {
+            { "Node", collectionNode },
+            { "Tracks", tracks },
+        });
+    }
+
+    /// <summary>
     /// Handles tap on any playlist/folder item. Resolves track keys
     /// and navigates to PlaylistPage.
     /// </summary>
