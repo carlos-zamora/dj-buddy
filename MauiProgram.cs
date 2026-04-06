@@ -1,4 +1,5 @@
-﻿using dj_buddy.Services;
+﻿using CommunityToolkit.Maui;
+using dj_buddy.Services;
 using MauiIcons.Material;
 using Microsoft.Extensions.Logging;
 
@@ -11,6 +12,7 @@ namespace dj_buddy
             var builder = MauiApp.CreateBuilder();
             builder
                 .UseMauiApp<App>()
+                .UseMauiCommunityToolkit()
                 .UseMaterialMauiIcons()
                 .ConfigureFonts(fonts =>
                 {

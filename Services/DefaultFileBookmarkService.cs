@@ -1,3 +1,5 @@
+using CommunityToolkit.Maui.Storage;
+
 namespace dj_buddy.Services;
 
 /// <summary>
@@ -20,22 +22,23 @@ public class DefaultFileBookmarkService : IFileBookmarkService
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Reads the bookmarked file, passes it to <paramref name="exportAction"/> to produce
+    /// the exported bytes, then presents a save-file dialog via MCT <see cref="FileSaver"/>
+    /// so the user can choose the destination.
+    /// </remarks>
     public async Task ExportAndSaveAsync(string bookmarkToken, Func<Stream, Task<byte[]>> exportAction)
     {
         if (!File.Exists(bookmarkToken))
             throw new FileNotFoundException("The rekordbox.xml file was not found.", bookmarkToken);
 
-        var dir = Path.GetDirectoryName(bookmarkToken)!;
-        var name = Path.GetFileNameWithoutExtension(bookmarkToken);
-        var ext = Path.GetExtension(bookmarkToken);
-        var backupPath = Path.Combine(dir, $"{name}_backup{ext}");
-
-        File.Copy(bookmarkToken, backupPath, overwrite: true);
-
         byte[] exported;
         using (var readStream = File.OpenRead(bookmarkToken))
             exported = await exportAction(readStream);
 
-        await File.WriteAllBytesAsync(bookmarkToken, exported);
+        var fileName = Path.GetFileName(bookmarkToken);
+        using var exportStream = new MemoryStream(exported);
+        var result = await FileSaver.Default.SaveAsync(fileName, exportStream, CancellationToken.None);
+        result.EnsureSuccess();
     }
 }

@@ -26,6 +26,8 @@
 		       <MauiXaml Update="MyPage.xaml" Inflator="Default" /> (reverts to defaults: Runtime for Debug, XamlC for Release)
 		       <MauiXaml Update="MyPage.xaml" Inflator="Runtime" /> (force runtime inflation) -->
 		<MauiXamlInflator>SourceGen</MauiXamlInflator>
+		<!-- MCT 13.0.0 requires MAUI >= 10.0.10; workload ships 10.0.20 which satisfies this. -->
+		<MauiVersion>10.0.20</MauiVersion>
 
 		<!-- Display name -->
 		<ApplicationTitle>DJ Buddy</ApplicationTitle>
@@ -48,6 +50,12 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- MCT controls (Expander, StateContainer/StateView) are not supported by SourceGen.
+		     Override these pages to use runtime inflation instead. -->
+		<MauiXaml Update="MainPage.xaml" Inflator="Runtime" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.png" />
 
@@ -67,7 +75,9 @@
 
 	<ItemGroup>
 		<PackageReference Include="AathifMahir.Maui.MauiIcons.Material" Version="6.0.0" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+		<PackageReference Include="CommunityToolkit.Maui" Version="13.0.0" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.20" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
 	</ItemGroup>
 

@@ -1,3 +1,6 @@
+using System.Windows.Input;
+using CommunityToolkit.Maui;
+using CommunityToolkit.Maui.Extensions;
 using dj_buddy.Models;
 using dj_buddy.Services;
 using MauiIcons.Core;
@@ -27,6 +30,12 @@ public partial class PlaylistPage : ContentPage
     private string? _keyFilter;
     private bool? _isNarrowLegend;
 
+    /// <summary>
+    /// Bound to <see cref="CommunityToolkit.Maui.Behaviors.UserStoppedTypingBehavior"/> on the
+    /// search entry. Receives the current text value after the user pauses typing.
+    /// </summary>
+    public ICommand SearchCommand { get; }
+
     public PlaylistNode? Node
     {
         get => _node;
@@ -51,9 +60,15 @@ public partial class PlaylistPage : ContentPage
 
     public PlaylistPage()
     {
+        SearchCommand = new Command<string>(text =>
+        {
+            _searchText = text ?? "";
+            BuildContent();
+        });
         InitializeComponent();
         // Workaround for MauiIcons URL-style namespace: https://github.com/AathifMahir/MauiIcons#workaround
         _ = new MauiIcon();
+        BindingContext = this;
     }
 
     protected override void OnSizeAllocated(double width, double height)
@@ -348,75 +363,27 @@ public partial class PlaylistPage : ContentPage
     private string SortIndicator(SortField field) =>
         _sortField != field ? "" : _sortAscending ? " \u25B2" : " \u25BC";
 
-    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
-    {
-        _searchText = e.NewTextValue ?? "";
-        BuildContent();
-    }
-
-    private void OnKeyFilterButtonClicked(object? sender, EventArgs e)
-    {
-        PopulateKeyGrid();
-        KeyPickerOverlay.IsVisible = true;
-    }
-
-    private void OnKeyPickerDismissed(object? sender, EventArgs e)
-    {
-        KeyPickerOverlay.IsVisible = false;
-    }
-
-    private void OnKeyPickerClear(object? sender, EventArgs e)
-    {
-        _keyFilter = null;
-        KeyPickerOverlay.IsVisible = false;
-        BuildContent();
-    }
-
     /// <summary>
-    /// Populates the key picker grid with buttons for all 24 Camelot keys (1A–12B).
-    /// Highlights the currently active filter key.
+    /// Opens the Camelot key picker popup. On return, updates the key filter if
+    /// the user selected a key or cleared it; does nothing if they dismissed by
+    /// tapping outside.
     /// </summary>
-    private void PopulateKeyGrid()
+    private async void OnKeyFilterButtonClicked(object? sender, EventArgs e)
     {
-        KeyGrid.Children.Clear();
-        KeyGrid.RowDefinitions.Clear();
+        var popup = new KeyPickerPopup(_keyFilter);
 
-        for (int number = 1; number <= 12; number++)
+        popup.KeySelected += async (_, key) =>
+            await this.ClosePopupAsync(key, CancellationToken.None);
+        popup.FilterCleared += async (_, _) =>
+            await this.ClosePopupAsync(string.Empty, CancellationToken.None);
+
+        var result = await this.ShowPopupAsync<string>(popup, new PopupOptions(), CancellationToken.None);
+
+        if (!result.WasDismissedByTappingOutsideOfPopup)
         {
-            KeyGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-
-            AddKeyButton($"{number}B", number - 1, 0);
-            AddKeyButton($"{number}A", number - 1, 1);
-        }
-    }
-
-    private void AddKeyButton(string key, int row, int col)
-    {
-        bool isSelected = string.Equals(key, _keyFilter, StringComparison.OrdinalIgnoreCase);
-
-        var button = new Button
-        {
-            Text = key,
-            FontSize = 14,
-            HeightRequest = 40,
-            Padding = new Thickness(0),
-            CornerRadius = 6,
-            BackgroundColor = isSelected ? Colors.DodgerBlue : Colors.Transparent,
-            TextColor = isSelected ? Colors.White : Colors.Gray,
-            BorderColor = Colors.Gray,
-            BorderWidth = 1,
-        };
-
-        button.Clicked += (_, _) =>
-        {
-            _keyFilter = key;
-            KeyPickerOverlay.IsVisible = false;
+            _keyFilter = string.IsNullOrEmpty(result.Result) ? null : result.Result;
             BuildContent();
-        };
-
-        KeyGrid.SetRow(button, row);
-        KeyGrid.SetColumn(button, col);
-        KeyGrid.Children.Add(button);
+        }
     }
 
     private void UpdateKeyFilterButton()

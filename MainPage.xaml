@@ -4,17 +4,20 @@
              xmlns:local="clr-namespace:dj_buddy"
              xmlns:models="clr-namespace:dj_buddy.Models"
              xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+             xmlns:mct="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="dj_buddy.MainPage"
              Title="DJ Buddy">
 
     <ContentPage.Resources>
-        <local:InvertBoolConverter x:Key="InvertBoolConverter" />
+        <mct:InvertedBoolConverter x:Key="InvertedBoolConverter" />
         <local:IsNotFavoritesConverter x:Key="IsNotFavoritesConverter" />
     </ContentPage.Resources>
 
-    <Grid>
+    <Grid x:Name="PageRoot">
+        <mct:StateContainer.StateViews>
+
         <!-- State 1: No library loaded -->
-        <Grid x:Name="WelcomeView" IsVisible="True"
+        <Grid mct:StateView.StateKey="Welcome"
               VerticalOptions="Center" HorizontalOptions="Center"
               RowDefinitions="Auto,Auto,Auto" RowSpacing="20"
               Padding="30">
@@ -38,7 +41,7 @@
         </Grid>
 
         <!-- State 2: Library loaded -->
-        <Grid x:Name="LibraryView" IsVisible="False"
+        <Grid mct:StateView.StateKey="Library"
               RowDefinitions="Auto,*">
 
             <!-- Header: filename, path, export, and change button -->
@@ -73,24 +76,28 @@
             <ScrollView Grid.Row="1">
                 <VerticalStackLayout>
 
-                    <!-- DJ BUDDY section header -->
-                    <Grid x:Name="DjBuddySectionHeader" Padding="16,12"
-                          BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnDjBuddySectionTapped" />
-                        </Grid.GestureRecognizers>
-                        <HorizontalStackLayout Spacing="8">
-                            <Label x:Name="DjBuddyCollapseIcon"
-                                   FontFamily="MaterialIcons-Regular"
-                                   FontSize="14" VerticalTextAlignment="Center" TextColor="Gray" />
-                            <Label Text="DJ BUDDY" FontSize="13" FontAttributes="Bold"
-                                   TextColor="Gray" VerticalTextAlignment="Center" />
-                        </HorizontalStackLayout>
-                    </Grid>
+                    <!-- DJ BUDDY section -->
+                    <mct:Expander x:Name="DjBuddyExpander" IsExpanded="True">
+                        <mct:Expander.Header>
+                            <Grid Padding="16,12"
+                                  BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#2A2A2A}">
+                                <HorizontalStackLayout Spacing="8">
+                                    <mi:MauiIcon Icon="{mi:Material Icon=ExpandMore}" IconSize="14"
+                                                 IconColor="Gray" VerticalOptions="Center"
+                                                 IsVisible="{Binding IsExpanded, Source={x:Reference DjBuddyExpander}}" />
+                                    <mi:MauiIcon Icon="{mi:Material Icon=ChevronRight}" IconSize="14"
+                                                 IconColor="Gray" VerticalOptions="Center"
+                                                 IsVisible="{Binding IsExpanded, Source={x:Reference DjBuddyExpander},
+                                                             Converter={StaticResource InvertedBoolConverter}}" />
+                                    <Label Text="DJ BUDDY" FontSize="13" FontAttributes="Bold"
+                                           TextColor="Gray" VerticalTextAlignment="Center" />
+                                </HorizontalStackLayout>
+                            </Grid>
+                        </mct:Expander.Header>
 
-                    <!-- DJ BUDDY playlists -->
-                    <VerticalStackLayout x:Name="DjBuddyPlaylistList">
-                        <BindableLayout.ItemTemplate>
+                        <!-- DJ BUDDY playlists -->
+                        <VerticalStackLayout x:Name="DjBuddyPlaylistList">
+                            <BindableLayout.ItemTemplate>
                             <DataTemplate>
                                 <SwipeView>
                                     <SwipeView.RightItems>
@@ -117,15 +124,16 @@
                                             <mi:MauiIcon Icon="{mi:Material Icon=Folder}" IconSize="20"
                                                          IsVisible="{Binding IsFolder}" />
                                             <mi:MauiIcon Icon="{mi:Material Icon=MusicNote}" IconSize="20"
-                                                         IsVisible="{Binding IsFolder, Converter={StaticResource InvertBoolConverter}}" />
+                                                         IsVisible="{Binding IsFolder, Converter={StaticResource InvertedBoolConverter}}" />
                                         </Grid>
                                         <Label Grid.Column="1" FontSize="16" VerticalTextAlignment="Center"
                                                Text="{Binding Name}" />
                                     </Grid>
                                 </SwipeView>
                             </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </mct:Expander>
 
                     <!-- REKORDBOX section header -->
                     <Grid Padding="16,12"
@@ -146,7 +154,7 @@
                                         <mi:MauiIcon Icon="{mi:Material Icon=Folder}" IconSize="20"
                                                      IsVisible="{Binding IsFolder}" />
                                         <mi:MauiIcon Icon="{mi:Material Icon=MusicNote}" IconSize="20"
-                                                     IsVisible="{Binding IsFolder, Converter={StaticResource InvertBoolConverter}}" />
+                                                     IsVisible="{Binding IsFolder, Converter={StaticResource InvertedBoolConverter}}" />
                                     </Grid>
                                     <Label Grid.Column="1" FontSize="16" VerticalTextAlignment="Center"
                                            Text="{Binding Name}" />
@@ -158,6 +166,8 @@
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>
+
+        </mct:StateContainer.StateViews>
     </Grid>
 
 </ContentPage>

@@ -1,7 +1,8 @@
+using CommunityToolkit.Maui.Alerts;
+using CommunityToolkit.Maui.Layouts;
 using dj_buddy.Models;
 using dj_buddy.Services;
 using MauiIcons.Core;
-using MauiIcons.Material;
 
 namespace dj_buddy;
 
@@ -17,7 +18,6 @@ public partial class MainPage : ContentPage
 
     private readonly IFileBookmarkService _bookmarkService;
     private RekordboxLibrary? _library;
-    private bool _djBuddySectionCollapsed;
 
     public MainPage(IFileBookmarkService bookmarkService)
     {
@@ -25,6 +25,8 @@ public partial class MainPage : ContentPage
         // Workaround for MauiIcons URL-style namespace: https://github.com/AathifMahir/MauiIcons#workaround
         _ = new MauiIcon();
         _bookmarkService = bookmarkService;
+        // StateContainer attached properties cannot be set in XAML with SourceGen — set initial state here.
+        StateContainer.SetCurrentState(PageRoot, "Welcome");
         _ = InitAsync();
     }
 
@@ -118,8 +120,7 @@ public partial class MainPage : ContentPage
         RefreshDjBuddySection();
         RefreshRekordboxSection();
 
-        WelcomeView.IsVisible = false;
-        LibraryView.IsVisible = true;
+        StateContainer.SetCurrentState(PageRoot, "Library");
     }
 
     protected override void OnAppearing()
@@ -132,22 +133,12 @@ public partial class MainPage : ContentPage
     private void RefreshDjBuddySection()
     {
         BindableLayout.SetItemsSource(DjBuddyPlaylistList, null);
-        BindableLayout.SetItemsSource(DjBuddyPlaylistList,
-            _djBuddySectionCollapsed ? null : DjBuddyPlaylistStore.DjBuddyFolder.Children);
-        DjBuddyCollapseIcon.Text = _djBuddySectionCollapsed
-            ? ((char)(int)MaterialIcons.ChevronRight).ToString()
-            : ((char)(int)MaterialIcons.ExpandMore).ToString();
+        BindableLayout.SetItemsSource(DjBuddyPlaylistList, DjBuddyPlaylistStore.DjBuddyFolder.Children);
     }
 
     private void RefreshRekordboxSection()
     {
         BindableLayout.SetItemsSource(RekordboxPlaylistList, _library?.Root.Children);
-    }
-
-    private void OnDjBuddySectionTapped(object? sender, EventArgs e)
-    {
-        _djBuddySectionCollapsed = !_djBuddySectionCollapsed;
-        RefreshDjBuddySection();
     }
 
     /// <summary>
@@ -248,7 +239,7 @@ public partial class MainPage : ContentPage
         var bookmark = Preferences.Get(PrefKeyBookmark, null as string);
         if (bookmark == null || _library == null)
         {
-            await DisplayAlertAsync("Export", "No library loaded.", "OK");
+            await Toast.Make("No library loaded.").Show();
             return;
         }
 
@@ -292,12 +283,3 @@ public class IsNotFavoritesConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>Inverts a boolean binding value.</summary>
-public class InvertBoolConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-        => value is not true;
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-        => throw new NotSupportedException();
-}

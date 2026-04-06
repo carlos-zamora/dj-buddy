@@ -1,6 +1,5 @@
+using CommunityToolkit.Maui.Storage;
 using Foundation;
-using ObjCRuntime;
-using UIKit;
 using dj_buddy.Services;
 
 namespace dj_buddy.Platforms.iOS;
@@ -51,10 +50,9 @@ public class FileBookmarkService : IFileBookmarkService
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Resolves the bookmark, reads the file (original stays untouched as the backup),
-    /// runs the export action to produce the modified bytes, writes them to a temporary
-    /// file, then presents a <c>UIDocumentPickerViewController</c> so the user can save
-    /// the exported file to any accessible location.
+    /// Resolves the bookmark, reads the file under security-scoped access, runs the
+    /// export action to produce the modified bytes, then hands the result to
+    /// MCT <see cref="FileSaver"/> which presents the system save dialog.
     /// </remarks>
     public async Task ExportAndSaveAsync(string bookmarkToken, Func<Stream, Task<byte[]>> exportAction)
     {
@@ -64,8 +62,6 @@ public class FileBookmarkService : IFileBookmarkService
         if (url.Path == null || !File.Exists(url.Path))
             throw new FileNotFoundException("The rekordbox.xml file was not found.");
 
-        // Read the source file under security-scoped access; the original is left
-        // untouched and serves as the implicit backup.
         byte[] exported;
         url.StartAccessingSecurityScopedResource();
         try
@@ -78,44 +74,10 @@ public class FileBookmarkService : IFileBookmarkService
             url.StopAccessingSecurityScopedResource();
         }
 
-        // Write exported bytes to a temp file, then hand it to the document picker.
         var fileName = Path.GetFileName(url.Path);
-        var tempPath = Path.Combine(Path.GetTempPath(), fileName);
-        await File.WriteAllBytesAsync(tempPath, exported);
-        var tempUrl = NSUrl.FromFilename(tempPath);
-
-        var tcs = new TaskCompletionSource<bool>();
-        var pickerDelegate = new ExportPickerDelegate(tcs);
-        // asCopy: true — picker copies to destination; temp file is ours to clean up.
-        var picker = new UIDocumentPickerViewController(new[] { tempUrl }, asCopy: true);
-        picker.Delegate = pickerDelegate;
-
-        var vc = Platform.GetCurrentUIViewController()
-            ?? throw new InvalidOperationException("No current view controller.");
-
-        await MainThread.InvokeOnMainThreadAsync(() =>
-            vc.PresentViewController(picker, true, null));
-
-        await tcs.Task;
-        File.Delete(tempPath);
-    }
-
-    /// <summary>
-    /// Document picker delegate that signals the <see cref="TaskCompletionSource{T}"/>
-    /// when the user finishes or cancels the save interaction.
-    /// </summary>
-    private sealed class ExportPickerDelegate : UIDocumentPickerDelegate
-    {
-        private readonly TaskCompletionSource<bool> _tcs;
-
-        public ExportPickerDelegate(TaskCompletionSource<bool> tcs) => _tcs = tcs;
-
-        [Export("documentPicker:didPickDocumentsAtURLs:")]
-        public void DidPickDocuments(UIDocumentPickerViewController controller, NSUrl[] urls)
-            => _tcs.TrySetResult(true);
-
-        public override void WasCancelled(UIDocumentPickerViewController controller)
-            => _tcs.TrySetResult(false);
+        using var exportStream = new MemoryStream(exported);
+        var result = await FileSaver.Default.SaveAsync(fileName, exportStream, CancellationToken.None);
+        result.EnsureSuccess();
     }
 
     /// <summary>

@@ -5,10 +5,11 @@
              xmlns:models="clr-namespace:dj_buddy.Models"
              xmlns:pages="clr-namespace:dj_buddy.Pages"
              xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+             xmlns:mct="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="dj_buddy.Pages.PlaylistPage">
 
     <ContentPage.Resources>
-        <root:InvertBoolConverter x:Key="InvertBoolConverter" />
+        <mct:InvertedBoolConverter x:Key="InvertedBoolConverter" />
 
         <DataTemplate x:Key="NodeTemplate" x:DataType="models:PlaylistNode">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="16,12">
@@ -19,7 +20,7 @@
                     <mi:MauiIcon Icon="{mi:Material Icon=Folder}" IconSize="20"
                                  IsVisible="{Binding IsFolder}" />
                     <mi:MauiIcon Icon="{mi:Material Icon=MusicNote}" IconSize="20"
-                                 IsVisible="{Binding IsFolder, Converter={StaticResource InvertBoolConverter}}" />
+                                 IsVisible="{Binding IsFolder, Converter={StaticResource InvertedBoolConverter}}" />
                 </Grid>
                 <Label Grid.Column="1" Text="{Binding Name}"
                        FontSize="16" VerticalTextAlignment="Center" />
@@ -120,8 +121,12 @@
             <Grid x:Name="FilterBar" ColumnDefinitions="*,Auto" ColumnSpacing="8"
                   Padding="16,4" IsVisible="False">
                 <Entry x:Name="SearchEntry" Placeholder="Search title or artist..."
-                       FontSize="14" ClearButtonVisibility="WhileEditing"
-                       TextChanged="OnSearchTextChanged" />
+                       FontSize="14" ClearButtonVisibility="WhileEditing">
+                    <Entry.Behaviors>
+                        <mct:UserStoppedTypingBehavior StoppedTypingTimeThreshold="400"
+                                                       Command="{Binding SearchCommand}" />
+                    </Entry.Behaviors>
+                </Entry>
                 <Button x:Name="KeyFilterButton" Grid.Column="1" Text="Key"
                         FontSize="13" Padding="12,0" HeightRequest="36"
                         CornerRadius="6" BackgroundColor="Transparent"
@@ -211,30 +216,6 @@
             </VerticalStackLayout>
         </ScrollView>
 
-        <!-- Key picker overlay -->
-        <Grid x:Name="KeyPickerOverlay" Grid.RowSpan="2" IsVisible="False" InputTransparent="False">
-            <!-- Dimmed backdrop — tap to dismiss -->
-            <BoxView Color="#80000000">
-                <BoxView.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnKeyPickerDismissed" />
-                </BoxView.GestureRecognizers>
-            </BoxView>
-
-            <!-- Popup card -->
-            <Border StrokeShape="RoundRectangle 12"
-                    BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}"
-                    HorizontalOptions="Center" VerticalOptions="Center"
-                    Padding="16" MaximumWidthRequest="300">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Filter by Key" FontSize="18" FontAttributes="Bold"
-                           HorizontalTextAlignment="Center" />
-                    <Grid x:Name="KeyGrid" ColumnDefinitions="*,*"
-                          RowSpacing="6" ColumnSpacing="6" />
-                    <Button Text="Clear" Clicked="OnKeyPickerClear"
-                            BackgroundColor="Transparent" TextColor="Gray" />
-                </VerticalStackLayout>
-            </Border>
-        </Grid>
     </Grid>
 
 </ContentPage>
