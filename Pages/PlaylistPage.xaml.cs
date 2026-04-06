@@ -23,9 +23,10 @@ public partial class PlaylistPage : ContentPage
 
     private PlaylistNode? _node;
     private List<Track>? _tracks;
-    private List<TrackDisplayItem>? _displayItems;
+    private readonly RangeObservableCollection<TrackDisplayItem> _displayItems = new();
     private bool _isDjBuddyPlaylist;
     private Track? _selectedTrack;
+    private CancellationTokenSource? _scrollCts;
     private SortField _sortField = SortField.None;
     private bool _sortAscending = true;
     private string _searchText = "";
@@ -137,7 +138,7 @@ public partial class PlaylistPage : ContentPage
         KeyLegend.IsVisible = hasTracks;
         var trackTemplate = (DataTemplate)Resources[_isDjBuddyPlaylist ? "DjBuddyTrackTemplate" : "TrackTemplate"];
         TrackList.ItemTemplate = trackTemplate;
-        _displayItems = hasTracks ? GetDisplayItems() : null;
+        _displayItems.Reset(hasTracks ? GetDisplayItems() : []);
         TrackList.ItemsSource = _displayItems;
 
         UpdateSortIndicators();
@@ -245,7 +246,7 @@ public partial class PlaylistPage : ContentPage
     /// </summary>
     private void RefreshHighlightColors()
     {
-        if (_displayItems == null) return;
+        if (_displayItems.Count == 0) return;
         BuildKeyGroups(out var sameKeys, out var adjacentKeys, out var boostKeys, out var dropKeys);
         foreach (var di in _displayItems)
         {
@@ -436,7 +437,7 @@ public partial class PlaylistPage : ContentPage
     private void OnBpmHeaderTapped(object? sender, EventArgs e) => ToggleSort(SortField.Bpm);
     private void OnKeyHeaderTapped(object? sender, EventArgs e) => ToggleSort(SortField.Key);
 
-    private void ToggleSort(SortField field)
+    private async void ToggleSort(SortField field)
     {
         if (_sortField == field)
             _sortAscending = !_sortAscending;
@@ -446,27 +447,54 @@ public partial class PlaylistPage : ContentPage
             _sortAscending = true;
         }
 
-        BuildContent();
+        SortDisplayItemsInPlace();
+        UpdateSortIndicators();
 
         if (_selectedTrack != null)
-            _ = ScrollToSelectedAsync();
+        {
+            var index = IndexOfSelected();
+            if (index >= 0)
+            {
+                // Cancel any in-flight scroll from a previous sort, then wait for
+                // WinUI's layout pass to commit the new item positions before ScrollTo.
+                _scrollCts?.Cancel();
+                _scrollCts = new CancellationTokenSource();
+                try
+                {
+                    await Task.Delay(50, _scrollCts.Token);
+                    TrackList.ScrollTo(index, position: ScrollToPosition.MakeVisible, animate: true);
+                }
+                catch (OperationCanceledException) { }
+            }
+        }
     }
 
     /// <summary>
-    /// Scrolls the selected track into view after a sort or filter rebuilds the list.
-    /// Delays one timer tick so the CollectionView layout pass for the new ItemsSource
-    /// completes before ScrollTo is called (Task.Yield is not enough).
+    /// Reorders <see cref="_displayItems"/> to match the current sort via
+    /// <see cref="ObservableCollection{T}.Move"/>, so CollectionView tracks each move
+    /// individually without a full Reset — preserving scroll position.
     /// </summary>
-    private async Task ScrollToSelectedAsync()
+    private void SortDisplayItemsInPlace()
     {
-        if (_selectedTrack == null || _displayItems == null) return;
+        if (_displayItems.Count == 0) return;
+        var sorted = GetFilteredAndSortedTracks().ToList();
+        for (int target = 0; target < sorted.Count; target++)
+        {
+            if (_displayItems[target].Track == sorted[target]) continue;
+            for (int from = target + 1; from < _displayItems.Count; from++)
+            {
+                if (_displayItems[from].Track != sorted[target]) continue;
+                _displayItems.Move(from, target);
+                break;
+            }
+        }
+    }
 
-        await Task.Delay(1);
-
-        var index = _displayItems.FindIndex(i => i.Track == _selectedTrack);
-        if (index < 0) return;
-
-        TrackList.ScrollTo(index, position: ScrollToPosition.MakeVisible, animate: true);
+    private int IndexOfSelected()
+    {
+        for (int i = 0; i < _displayItems.Count; i++)
+            if (_displayItems[i].Track == _selectedTrack) return i;
+        return -1;
     }
 
     /// <summary>
@@ -557,5 +585,25 @@ public class KeyComparer : IComparer<string>
             num = int.MaxValue;
             letter = key;
         }
+    }
+}
+
+/// <summary>
+/// An <see cref="ObservableCollection{T}"/> that supports bulk replacement via a single
+/// <see cref="NotifyCollectionChangedAction.Reset"/> notification, avoiding the per-item
+/// churn of clear + individual adds.
+/// </summary>
+class RangeObservableCollection<T> : System.Collections.ObjectModel.ObservableCollection<T>
+{
+    /// <summary>
+    /// Replaces all items with <paramref name="newItems"/> and fires a single Reset notification.
+    /// </summary>
+    public void Reset(IEnumerable<T> newItems)
+    {
+        Items.Clear();
+        foreach (var item in newItems)
+            Items.Add(item);
+        OnCollectionChanged(new System.Collections.Specialized.NotifyCollectionChangedEventArgs(
+            System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
     }
 }
