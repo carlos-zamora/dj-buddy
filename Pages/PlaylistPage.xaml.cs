@@ -417,6 +417,28 @@ public partial class PlaylistPage : ContentPage
         }
 
         BuildContent();
+
+        if (_selectedTrack != null)
+            _ = ScrollToSelectedAsync();
+    }
+
+    /// <summary>
+    /// Scrolls the selected track into view after a sort or filter rebuilds the list.
+    /// Yields once to allow BindableLayout to populate children before scrolling.
+    /// </summary>
+    private async Task ScrollToSelectedAsync()
+    {
+        if (_selectedTrack == null) return;
+
+        // Yield so BindableLayout has a chance to populate TrackList.Children.
+        await Task.Yield();
+
+        var sorted = GetFilteredAndSortedTracks().ToList();
+        var index = sorted.IndexOf(_selectedTrack);
+        if (index < 0 || index >= TrackList.Children.Count) return;
+
+        if (TrackList.Children[index] is not Element view) return;
+        await ContentScrollView.ScrollToAsync(view, ScrollToPosition.MakeVisible, animated: true);
     }
 
     /// <summary>

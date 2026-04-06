@@ -195,7 +195,7 @@
         </VerticalStackLayout>
 
         <!-- Scrollable content -->
-        <ScrollView Grid.Row="1">
+        <ScrollView x:Name="ContentScrollView" Grid.Row="1">
             <VerticalStackLayout>
 
                 <!-- Playlists section -->
