@@ -74,5 +74,11 @@
 
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
+
+	<!-- Opt into iOS 26 compatibility mode to avoid crash in UIWindowScene's
+	     new @Observable corner provider feature, which is incompatible with
+	     apps not built with the Xcode 26 SDK. -->
+	<key>UIDesignRequiresCompatibility</key>
+	<true/>
 </dict>
 </plist>
