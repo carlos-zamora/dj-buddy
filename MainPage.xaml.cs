@@ -227,6 +227,7 @@ public partial class MainPage : ContentPage
         {
             { "Node", collectionNode },
             { "Tracks", tracks },
+            { "IsCollection", true },
         });
     }
 

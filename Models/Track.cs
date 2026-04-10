@@ -16,6 +16,11 @@ public class Track
     public string Key { get; set; } = "";
 
     /// <summary>
+    /// The date the track was added to the rekordbox library, parsed from the DateAdded attribute.
+    /// </summary>
+    public DateTime? DateAdded { get; set; }
+
+    /// <summary>
     /// Formatted BPM for display. Returns an em-dash when BPM is zero or unset.
     /// </summary>
     public string BpmDisplay => Bpm > 0 ? Bpm.ToString("0.##") : "—";

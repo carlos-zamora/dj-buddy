@@ -14,6 +14,7 @@ namespace dj_buddy.Pages;
 /// </summary>
 [QueryProperty(nameof(Node), "Node")]
 [QueryProperty(nameof(Tracks), "Tracks")]
+[QueryProperty(nameof(IsCollection), "IsCollection")]
 public partial class PlaylistPage : ContentPage
 {
     private static readonly Color SameKeyColor = Color.FromArgb("#3848D868");      // green — harmony
@@ -25,6 +26,7 @@ public partial class PlaylistPage : ContentPage
     private List<Track>? _tracks;
     private readonly RangeObservableCollection<TrackDisplayItem> _displayItems = new();
     private bool _isDjBuddyPlaylist;
+    private bool _isCollection;
     private Track? _selectedTrack;
     private CancellationTokenSource? _scrollCts;
     private SortField _sortField = SortField.None;
@@ -57,6 +59,26 @@ public partial class PlaylistPage : ContentPage
         set
         {
             _tracks = value;
+            BuildContent();
+        }
+    }
+
+    /// <summary>
+    /// When true, this page is showing the full library collection.
+    /// Enables the "Recently Added" sort button and defaults sort to date-added descending.
+    /// Set via Shell query property — may arrive after Node/Tracks, so triggers a rebuild.
+    /// </summary>
+    public bool IsCollection
+    {
+        get => _isCollection;
+        set
+        {
+            _isCollection = value;
+            if (_isCollection)
+            {
+                _sortField = SortField.DateAdded;
+                _sortAscending = false;
+            }
             BuildContent();
         }
     }
@@ -141,6 +163,7 @@ public partial class PlaylistPage : ContentPage
         _displayItems.Reset(hasTracks ? GetDisplayItems() : []);
         TrackList.ItemsSource = _displayItems;
 
+        DateAddedSortButton.IsVisible = _isCollection;
         UpdateSortIndicators();
         UpdateKeyFilterButton();
         UpdateKeyLegend();
@@ -178,6 +201,9 @@ public partial class PlaylistPage : ContentPage
             SortField.Key => _sortAscending
                 ? filtered.OrderBy(t => t.Key, KeyComparer.Instance)
                 : filtered.OrderByDescending(t => t.Key, KeyComparer.Instance),
+            SortField.DateAdded => _sortAscending
+                ? filtered.OrderBy(t => t.DateAdded ?? DateTime.MinValue)
+                : filtered.OrderByDescending(t => t.DateAdded ?? DateTime.MinValue),
             _ => filtered,
         };
     }
@@ -389,6 +415,7 @@ public partial class PlaylistPage : ContentPage
         TitleHeaderLabel.Text = "Title" + SortIndicator(SortField.Title);
         BpmHeaderLabel.Text = "BPM" + SortIndicator(SortField.Bpm);
         KeyHeaderLabel.Text = "Key" + SortIndicator(SortField.Key);
+        UpdateDateAddedSortButton();
     }
 
     private string SortIndicator(SortField field) =>
@@ -436,6 +463,23 @@ public partial class PlaylistPage : ContentPage
     private void OnTitleHeaderTapped(object? sender, EventArgs e) => ToggleSort(SortField.Title);
     private void OnBpmHeaderTapped(object? sender, EventArgs e) => ToggleSort(SortField.Bpm);
     private void OnKeyHeaderTapped(object? sender, EventArgs e) => ToggleSort(SortField.Key);
+    private void OnDateAddedSortClicked(object? sender, EventArgs e) => ToggleSort(SortField.DateAdded);
+
+    /// <summary>
+    /// Updates the "Recently Added" button appearance based on whether date-added sort is active.
+    /// Active state uses a filled style; inactive uses a transparent outline.
+    /// </summary>
+    private void UpdateDateAddedSortButton()
+    {
+        if (!_isCollection) return;
+        bool active = _sortField == SortField.DateAdded;
+        DateAddedSortButton.Text = active
+            ? "Recently Added" + (_sortAscending ? " \u25B2" : " \u25BC")
+            : "Recently Added";
+        DateAddedSortButton.BackgroundColor = active ? Colors.DodgerBlue : Colors.Transparent;
+        DateAddedSortButton.TextColor = active ? Colors.White : Colors.Gray;
+        DateAddedSortButton.BorderColor = active ? Colors.DodgerBlue : Colors.Gray;
+    }
 
     private async void ToggleSort(SortField field)
     {
@@ -447,16 +491,22 @@ public partial class PlaylistPage : ContentPage
             _sortAscending = true;
         }
 
-        SortDisplayItemsInPlace();
         UpdateSortIndicators();
+
+        SortingIndicator.IsVisible = true;
+        SortingIndicator.IsRunning = true;
+        await Task.Yield(); // let the indicator render before blocking the UI thread
+
+        _displayItems.Reset(GetDisplayItems());
+
+        SortingIndicator.IsRunning = false;
+        SortingIndicator.IsVisible = false;
 
         if (_selectedTrack != null)
         {
             var index = IndexOfSelected();
             if (index >= 0)
             {
-                // Cancel any in-flight scroll from a previous sort, then wait for
-                // WinUI's layout pass to commit the new item positions before ScrollTo.
                 _scrollCts?.Cancel();
                 _scrollCts = new CancellationTokenSource();
                 try
@@ -465,27 +515,6 @@ public partial class PlaylistPage : ContentPage
                     TrackList.ScrollTo(index, position: ScrollToPosition.MakeVisible, animate: true);
                 }
                 catch (OperationCanceledException) { }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Reorders <see cref="_displayItems"/> to match the current sort via
-    /// <see cref="ObservableCollection{T}.Move"/>, so CollectionView tracks each move
-    /// individually without a full Reset — preserving scroll position.
-    /// </summary>
-    private void SortDisplayItemsInPlace()
-    {
-        if (_displayItems.Count == 0) return;
-        var sorted = GetFilteredAndSortedTracks().ToList();
-        for (int target = 0; target < sorted.Count; target++)
-        {
-            if (_displayItems[target].Track == sorted[target]) continue;
-            for (int from = target + 1; from < _displayItems.Count; from++)
-            {
-                if (_displayItems[from].Track != sorted[target]) continue;
-                _displayItems.Move(from, target);
-                break;
             }
         }
     }
@@ -547,7 +576,7 @@ public class TrackDisplayItem(Track track, Color? highlightColor, bool isSelecte
     }
 }
 
-public enum SortField { None, Title, Bpm, Key }
+public enum SortField { None, Title, Bpm, Key, DateAdded }
 
 /// <summary>
 /// Compares rekordbox alphanumeric keys (e.g. "8A", "11B") by their numeric part first,

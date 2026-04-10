@@ -63,6 +63,9 @@ public static class RekordboxParser
                     Key = reader.GetAttribute("Tonality") ?? "",
                 };
 
+                if (DateTime.TryParse(reader.GetAttribute("DateAdded"), out var dateAdded))
+                    track.DateAdded = dateAdded;
+
                 if (double.TryParse(reader.GetAttribute("AverageBpm"), System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out var bpm))
                     track.Bpm = bpm;
