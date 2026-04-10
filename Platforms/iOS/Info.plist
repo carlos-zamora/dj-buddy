@@ -80,5 +80,26 @@
 	     apps not built with the Xcode 26 SDK. -->
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
+
+	<!-- Privacy usage descriptions required by Apple because included frameworks
+	     (MAUI, MCT, MauiIcons) reference these APIs. DJ Buddy does not use them
+	     directly, but the keys must be present to pass App Store validation when
+	     linking is disabled (MtouchLink=None). -->
+	<key>NSCalendarsUsageDescription</key>
+	<string>DJ Buddy does not access your calendars.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>DJ Buddy does not access your contacts.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DJ Buddy does not access your microphone.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>DJ Buddy does not access your Apple Music library.</string>
+	<key>NSSiriUsageDescription</key>
+	<string>DJ Buddy does not use Siri.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DJ Buddy does not access your location.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>DJ Buddy does not access your location.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>DJ Buddy does not use Bluetooth.</string>
 </dict>
 </plist>
