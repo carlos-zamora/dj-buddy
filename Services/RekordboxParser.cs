@@ -55,12 +55,13 @@ public static class RekordboxParser
 
             if (reader.NodeType == XmlNodeType.Element && reader.Name == "TRACK")
             {
+                var tonality = reader.GetAttribute("Tonality") ?? "";
                 var track = new Track
                 {
                     TrackId = reader.GetAttribute("TrackID") ?? "",
                     Name = reader.GetAttribute("Name") ?? "",
                     Artist = reader.GetAttribute("Artist") ?? "",
-                    Key = reader.GetAttribute("Tonality") ?? "",
+                    Key = KeyConverter.ToCamelotNotation(tonality),
                 };
 
                 if (DateTime.TryParse(reader.GetAttribute("DateAdded"), out var dateAdded))
