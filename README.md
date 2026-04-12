@@ -1,6 +1,6 @@
 # DJ Buddy
 
-A rekordbox.xml browser built with .NET MAUI. Load a rekordbox XML export and navigate your playlist/folder tree with sorting, search, key filtering, and harmonic mixing highlights.
+A rekordbox.xml browser built with .NET MAUI, plus an AI-powered DJ assistant console app using the GitHub Copilot SDK. Load a rekordbox XML export and navigate your playlist/folder tree with sorting, search, key filtering, and harmonic mixing highlights — or chat with DJ Buddy to query your library with natural language.
 
 ## Features
 
@@ -16,6 +16,7 @@ A rekordbox.xml browser built with .NET MAUI. Load a rekordbox XML export and na
 - **Export to rekordbox** — Export your DJ Buddy playlists back into rekordbox.xml as a `DJ_BUDDY` folder. A backup is created automatically before writing
 - **Auto-reload** — Remembers the last loaded file and reloads it on startup
 - **Cross-platform** — Targets Windows, Android, iOS, and macOS via .NET MAUI
+- **AI assistant** — Console-based DJ Buddy agent (GitHub Copilot SDK) answers natural language queries about your library, searches tracks, lists playlists, and provides library stats
 
 ## Prerequisites
 
@@ -30,6 +31,9 @@ dotnet run -f net10.0-windows10.0.19041.0
 
 # Android
 dotnet build -f net10.0-android
+
+# Agent console app
+dotnet run --project src/Agent/Agent.csproj -- [path-to-rekordbox.xml]
 
 # Shared library only
 dotnet build Rekordbox/Rekordbox.csproj
@@ -51,6 +55,11 @@ dotnet test Rekordbox.Tests/Rekordbox.Tests.csproj
 ## Project Structure
 
 ```
+├── Agent/                         # Console-based AI assistant (GitHub Copilot SDK)
+│   ├── Program.cs                 # Entry point, REPL loop, Copilot session wiring
+│   ├── SystemPrompt.cs            # DJ Buddy agent persona
+│   └── Tools/
+│       └── LibraryTools.cs        # 5 query tools (search, details, playlists, stats)
 ├── Rekordbox/                     # Shared .NET library (net10.0, no MAUI dependency)
 │   ├── Models/
 │   │   ├── Track.cs               # Full-fidelity track model (~25 attributes + cues + beatgrid)
