@@ -1,3 +1,5 @@
 <Solution>
-  <Project Path="dj-buddy.csproj" />
+  <Project Path="src/MAUI/DJBuddyMAUI.csproj" />
+  <Project Path="src/Rekordbox/Rekordbox.csproj" />
+  <Project Path="src/Rekordbox.Tests/Rekordbox.Tests.csproj" />
 </Solution>

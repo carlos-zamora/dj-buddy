@@ -21,7 +21,7 @@ jobs:
               run: dotnet workload install maui --version 10.0.201
 
             - name: Restore dependencies
-              run: dotnet restore dj-buddy.csproj
+              run: dotnet restore src/MAUI/DJBuddyMAUI.csproj
 
             - name: Decode and install provisioning profile
               env:
@@ -57,7 +57,7 @@ jobs:
 
             - name: Build iOS IPA
               run: |
-                dotnet publish dj-buddy.csproj \
+                dotnet publish src/MAUI/DJBuddyMAUI.csproj \
                   -f net10.0-ios \
                   -c Release \
                   -p:RuntimeIdentifier=ios-arm64 \

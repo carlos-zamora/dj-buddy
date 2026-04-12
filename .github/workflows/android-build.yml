@@ -21,11 +21,11 @@ jobs:
               run: dotnet workload install maui-android --version 9.0.200
 
             - name: Restore dependencies
-              run: dotnet restore dj-buddy.csproj
+              run: dotnet restore src/MAUI/DJBuddyMAUI.csproj
 
             - name: Update app version
               run: |
-                CURRENT_VERSION=$(sed -n 's/.*<ApplicationDisplayVersion>\(.*\)<\/ApplicationDisplayVersion>.*/\1/p' dj-buddy.csproj)
+                CURRENT_VERSION=$(sed -n 's/.*<ApplicationDisplayVersion>\(.*\)<\/ApplicationDisplayVersion>.*/\1/p' src/MAUI/DJBuddyMAUI.csproj)
                 echo "Current version: $CURRENT_VERSION"
 
                 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
@@ -35,12 +35,12 @@ jobs:
 
                 echo "New version: $NEW_VERSION"
 
-                sed -i "s/<ApplicationDisplayVersion>.*<\/ApplicationDisplayVersion>/<ApplicationDisplayVersion>$NEW_VERSION<\/ApplicationDisplayVersion>/" dj-buddy.csproj
-                sed -i "s/<ApplicationVersion>.*<\/ApplicationVersion>/<ApplicationVersion>$NEW_PATCH<\/ApplicationVersion>/" dj-buddy.csproj
+                sed -i "s/<ApplicationDisplayVersion>.*<\/ApplicationDisplayVersion>/<ApplicationDisplayVersion>$NEW_VERSION<\/ApplicationDisplayVersion>/" src/MAUI/DJBuddyMAUI.csproj
+                sed -i "s/<ApplicationVersion>.*<\/ApplicationVersion>/<ApplicationVersion>$NEW_PATCH<\/ApplicationVersion>/" src/MAUI/DJBuddyMAUI.csproj
 
                 echo "Updated ApplicationDisplayVersion to: $NEW_VERSION"
                 echo "Updated ApplicationVersion to: $NEW_PATCH"
-                grep "ApplicationVersion" dj-buddy.csproj
+                grep "ApplicationVersion" src/MAUI/DJBuddyMAUI.csproj
 
             - name: Decode keystore
               run: |
@@ -48,7 +48,7 @@ jobs:
 
             - name: Build Android AAB
               run: |
-                dotnet publish dj-buddy.csproj \
+                dotnet publish src/MAUI/DJBuddyMAUI.csproj \
                   -f net9.0-android \
                   -c Release \
                   -p:AndroidPackageFormat=aab \
