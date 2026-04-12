@@ -2,9 +2,10 @@ using System.ComponentModel;
 using System.Windows.Input;
 using CommunityToolkit.Maui;
 using CommunityToolkit.Maui.Extensions;
-using dj_buddy.Models;
 using dj_buddy.Services;
 using MauiIcons.Core;
+using Rekordbox.Models;
+using Rekordbox.Query;
 
 namespace dj_buddy.Pages;
 
@@ -173,37 +174,17 @@ public partial class PlaylistPage : ContentPage
     {
         if (_tracks == null) return [];
 
-        IEnumerable<Track> filtered = _tracks;
-
-        if (!string.IsNullOrWhiteSpace(_searchText))
-        {
-            var terms = _searchText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            filtered = filtered.Where(t =>
-                terms.All(term =>
-                    t.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                    t.Artist.Contains(term, StringComparison.OrdinalIgnoreCase)));
-        }
+        IEnumerable<Track> filtered = _tracks.Search(_searchText);
 
         if (!string.IsNullOrEmpty(_keyFilter))
-        {
-            filtered = filtered.Where(t =>
-                string.Equals(t.Key, _keyFilter, StringComparison.OrdinalIgnoreCase));
-        }
+            filtered = filtered.WhereKey(_keyFilter);
 
         return _sortField switch
         {
-            SortField.Title => _sortAscending
-                ? filtered.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)
-                : filtered.OrderByDescending(t => t.Name, StringComparer.CurrentCultureIgnoreCase),
-            SortField.Bpm => _sortAscending
-                ? filtered.OrderBy(t => t.Bpm)
-                : filtered.OrderByDescending(t => t.Bpm),
-            SortField.Key => _sortAscending
-                ? filtered.OrderBy(t => t.Key, KeyComparer.Instance)
-                : filtered.OrderByDescending(t => t.Key, KeyComparer.Instance),
-            SortField.DateAdded => _sortAscending
-                ? filtered.OrderBy(t => t.DateAdded ?? DateTime.MinValue)
-                : filtered.OrderByDescending(t => t.DateAdded ?? DateTime.MinValue),
+            SortField.Title => filtered.OrderBy(TrackSortKey.Title, !_sortAscending),
+            SortField.Bpm => filtered.OrderBy(TrackSortKey.Bpm, !_sortAscending),
+            SortField.Key => filtered.OrderBy(TrackSortKey.Key, !_sortAscending),
+            SortField.DateAdded => filtered.OrderBy(TrackSortKey.DateAdded, !_sortAscending),
             _ => filtered,
         };
     }
@@ -577,45 +558,6 @@ public class TrackDisplayItem(Track track, Color? highlightColor, bool isSelecte
 }
 
 public enum SortField { None, Title, Bpm, Key, DateAdded }
-
-/// <summary>
-/// Compares rekordbox alphanumeric keys (e.g. "8A", "11B") by their numeric part first,
-/// then by the letter suffix.
-/// </summary>
-public class KeyComparer : IComparer<string>
-{
-    public static readonly KeyComparer Instance = new();
-
-    public int Compare(string? x, string? y)
-    {
-        Parse(x, out var xNum, out var xLetter);
-        Parse(y, out var yNum, out var yLetter);
-
-        int cmp = xNum.CompareTo(yNum);
-        return cmp != 0 ? cmp : string.Compare(xLetter, yLetter, StringComparison.Ordinal);
-    }
-
-    private static void Parse(string? key, out int num, out string letter)
-    {
-        if (string.IsNullOrEmpty(key))
-        {
-            num = int.MaxValue;
-            letter = "";
-            return;
-        }
-
-        int i = 0;
-        while (i < key.Length && char.IsDigit(key[i])) i++;
-
-        if (i > 0 && int.TryParse(key.AsSpan(0, i), out num))
-            letter = key[i..];
-        else
-        {
-            num = int.MaxValue;
-            letter = key;
-        }
-    }
-}
 
 /// <summary>
 /// An <see cref="ObservableCollection{T}"/> that supports bulk replacement via a single

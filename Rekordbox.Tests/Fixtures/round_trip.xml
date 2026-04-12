@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.7.0" Company="AlphaTheta"/>
+  <COLLECTION Entries="2">
+    <TRACK TrackID="2001" Name="Track A" Artist="Artist A" Composer="" Album="Album A"
+           Grouping="" Genre="House" Kind="MP3 File" Size="1000" TotalTime="120"
+           DiscNumber="0" TrackNumber="0" Year="2024" AverageBpm="124.00" DateAdded="2024-01-01"
+           BitRate="320" SampleRate="44100" Comments="" PlayCount="0" Rating="0"
+           Location="file://localhost/C:/music/a.mp3"
+           Remixer="" Tonality="Am" Label="" Mix=""/>
+    <TRACK TrackID="2002" Name="Track B" Artist="Artist B" Composer="" Album="Album B"
+           Grouping="" Genre="Techno" Kind="MP3 File" Size="2000" TotalTime="240"
+           DiscNumber="0" TrackNumber="0" Year="2024" AverageBpm="132.00" DateAdded="2024-02-01"
+           BitRate="320" SampleRate="44100" Comments="" PlayCount="5" Rating="102"
+           Location="file://localhost/C:/music/b.mp3"
+           Remixer="" Tonality="Gm" Label="" Mix=""/>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="2">
+      <NODE Name="Existing" Type="1" KeyType="0" Entries="2">
+        <TRACK Key="2001"/>
+        <TRACK Key="2002"/>
+      </NODE>
+      <NODE Name="DJ_BUDDY" Type="0" Count="1">
+        <NODE Name="Favorites" Type="1" KeyType="0" Entries="1">
+          <TRACK Key="2001"/>
+        </NODE>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

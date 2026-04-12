@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.7.0" Company="AlphaTheta"/>
+  <COLLECTION Entries="3">
+    <!-- Track 1: self-closing TRACK form. Fully populated, includes a weird unknown attribute. -->
+    <TRACK TrackID="1001" Name="Strobe" Artist="deadmau5" Composer="Joel Zimmerman" Album="For Lack Of A Better Name"
+           Grouping="Progressive" Genre="Progressive House" Kind="MP3 File" Size="15000000" TotalTime="634"
+           DiscNumber="1" TrackNumber="9" Year="2009" AverageBpm="128.00" DateAdded="2023-01-15" DateModified="2023-06-01"
+           BitRate="320" SampleRate="44100" Comments="Classic" PlayCount="42" Rating="204"
+           Location="file://localhost/C:/music/strobe.mp3"
+           Remixer="" Tonality="Bbm" Label="mau5trap" Mix="Original" CustomTag="banger"/>
+
+    <!-- Track 2: non-empty TRACK form with nested TEMPO and POSITION_MARK children. -->
+    <TRACK TrackID="1002" Name="Ghosts 'n' Stuff" Artist="deadmau5" Composer="" Album="For Lack Of A Better Name"
+           Grouping="" Genre="Electro House" Kind="MP3 File" Size="9000000" TotalTime="245"
+           DiscNumber="0" TrackNumber="0" Year="2009" AverageBpm="128.00" DateAdded="2023-02-20"
+           BitRate="320" SampleRate="44100" Comments="" PlayCount="17" Rating="153"
+           Location="file://localhost/C:/music/ghosts.mp3"
+           Remixer="" Tonality="F#m" Label="mau5trap" Mix="">
+      <TEMPO Inizio="0.014" Bpm="128.00" Metro="4/4" Battito="1"/>
+      <TEMPO Inizio="60.000" Bpm="128.50" Metro="4/4" Battito="3"/>
+      <POSITION_MARK Name="Intro" Type="0" Start="0.500" Num="0" Red="40" Green="226" Blue="20"/>
+      <POSITION_MARK Name="Drop" Type="0" Start="61.234" Num="1" Red="255" Green="0" Blue="0"/>
+      <POSITION_MARK Name="Loop A" Type="4" Start="120.000" End="124.000" Num="-1" Red="0" Green="128" Blue="255"/>
+    </TRACK>
+
+    <!-- Track 3: minimal attributes, no DateAdded, no key. -->
+    <TRACK TrackID="1003" Name="Silent" Artist="" AverageBpm="0.00"/>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="2">
+      <NODE Name="Top-level Playlist" Type="1" KeyType="0" Entries="2">
+        <TRACK Key="1001"/>
+        <TRACK Key="1002"/>
+      </NODE>
+      <NODE Name="Folder A" Type="0" Count="1">
+        <NODE Name="Nested Playlist" Type="1" KeyType="0" Entries="1">
+          <TRACK Key="1003"/>
+        </NODE>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

@@ -47,6 +47,11 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+
+		<!-- Sibling Rekordbox library / test projects live under these folders. Exclude them
+		     from this project's default item globbing so the two projects don't both compile
+		     the same .cs files. -->
+		<DefaultItemExcludes>$(DefaultItemExcludes);Rekordbox\**;Rekordbox.Tests\**</DefaultItemExcludes>
 	</PropertyGroup>
 
 	<!-- Disable managed trimming for iOS to work around a startup crash caused by the
@@ -88,6 +93,10 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.20" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="Rekordbox\Rekordbox.csproj" />
 	</ItemGroup>
 
 </Project>

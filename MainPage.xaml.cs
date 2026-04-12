@@ -1,8 +1,10 @@
 using CommunityToolkit.Maui.Alerts;
 using CommunityToolkit.Maui.Layouts;
-using dj_buddy.Models;
 using dj_buddy.Services;
 using MauiIcons.Core;
+using Rekordbox.Models;
+using Rekordbox.Query;
+using Rekordbox.Xml;
 
 namespace dj_buddy;
 
@@ -239,12 +241,9 @@ public partial class MainPage : ContentPage
     {
         if (sender is not BindableObject bindable || bindable.BindingContext is not PlaylistNode node)
             return;
+        if (_library == null) return;
 
-        var tracks = node.TrackKeys
-            .Select(k => _library?.Tracks.GetValueOrDefault(k))
-            .Where(t => t != null)
-            .Cast<Track>()
-            .ToList();
+        var tracks = node.GetTracks(_library).ToList();
 
         await Shell.Current.GoToAsync("playlist", new Dictionary<string, object>
         {
@@ -270,7 +269,7 @@ public partial class MainPage : ContentPage
         try
         {
             await _bookmarkService.ExportAndSaveAsync(bookmark,
-                stream => RekordboxExporter.ExportAsync(stream, DjBuddyPlaylistStore.DjBuddyFolder));
+                stream => RekordboxExporter.PatchPlaylistNodeAsync(stream, DjBuddyPlaylistStore.DjBuddyFolder));
 
             await DisplayAlertAsync("Export Complete",
                 "DJ_BUDDY playlists added to rekordbox.xml.\n\n" +

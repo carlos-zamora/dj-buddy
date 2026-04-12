@@ -30,6 +30,12 @@ dotnet run -f net10.0-windows10.0.19041.0
 
 # Android
 dotnet build -f net10.0-android
+
+# Shared library only
+dotnet build Rekordbox/Rekordbox.csproj
+
+# Tests
+dotnet test Rekordbox.Tests/Rekordbox.Tests.csproj
 ```
 
 ## Usage
@@ -45,17 +51,32 @@ dotnet build -f net10.0-android
 ## Project Structure
 
 ```
-├── Models/
-│   ├── Track.cs              # Track data (name, artist, BPM, key)
-│   ├── PlaylistNode.cs       # Playlist/folder tree node
-│   └── RekordboxLibrary.cs   # Parsed library (tracks + playlist tree)
+├── Rekordbox/                     # Shared .NET library (net10.0, no MAUI dependency)
+│   ├── Models/
+│   │   ├── Track.cs               # Full-fidelity track model (~25 attributes + cues + beatgrid)
+│   │   ├── PlaylistNode.cs        # Playlist/folder tree node
+│   │   ├── RekordboxLibrary.cs    # Parsed library (tracks + playlist tree)
+│   │   ├── CuePoint.cs            # Hot cue / memory cue / loop from POSITION_MARK
+│   │   └── TempoMark.cs           # Beatgrid entry from TEMPO
+│   ├── Xml/
+│   │   ├── RekordboxParser.cs     # Streaming XML parser for rekordbox.xml
+│   │   ├── RekordboxExporter.cs   # Patch or full-write rekordbox.xml
+│   │   ├── KeyConverter.cs        # Tonality -> Camelot wheel notation
+│   │   └── ParseOptions.cs        # Toggle tempo/cue/unknown-attr parsing
+│   └── Query/
+│       ├── TrackQuery.cs          # Search, WhereKey, WhereBpmBetween, OrderBy extensions
+│       ├── LibraryExtensions.cs   # GetTracks, EnumeratePlaylists, FindByName
+│       ├── TrackSearchFields.cs   # [Flags] enum for search field selection
+│       ├── TrackSortKey.cs        # Sort key enum
+│       └── CamelotKeyComparer.cs  # Numeric Camelot key ordering
+├── Rekordbox.Tests/               # xUnit v3 tests for the shared library
+│   ├── Fixtures/                  # Embedded XML fixtures (minimal.xml, round_trip.xml)
+│   └── Xml/ Query/                # Test classes mirroring library structure
 ├── Services/
-│   ├── RekordboxParser.cs       # Streaming XML parser for rekordbox.xml
-│   ├── RekordboxExporter.cs     # Exports DJ_BUDDY playlists into rekordbox.xml
-│   ├── DjBuddyPlaylistStore.cs  # Static store for favorites & doubles (JSON persistence)
-│   └── LibraryStore.cs          # Static singleton holding the current library
+│   ├── DjBuddyPlaylistStore.cs    # Static store for favorites & doubles (JSON persistence)
+│   └── LibraryStore.cs            # Static singleton holding the current library
 ├── Pages/
-│   └── PlaylistPage.xaml.cs  # Playlist view with sorting, search, key highlights
-├── MainPage.xaml.cs          # Welcome screen + top-level library view
-└── dj-buddy.csproj
+│   └── PlaylistPage.xaml.cs       # Playlist view with sorting, search, key highlights
+├── MainPage.xaml.cs               # Welcome screen + top-level library view
+└── dj-buddy.csproj               # MAUI app, references Rekordbox.csproj
 ```
