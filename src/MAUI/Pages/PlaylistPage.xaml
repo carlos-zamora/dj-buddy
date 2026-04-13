@@ -29,14 +29,6 @@
 
         <DataTemplate x:Key="TrackTemplate" x:DataType="pages:TrackDisplayItem">
             <SwipeView>
-                <SwipeView.LeftItems>
-                    <SwipeItems>
-                        <!-- Swipe - Left: Add Song -->
-                        <SwipeItem IconImageSource="{mi:Material Icon=Add}"
-                                   BackgroundColor="#2ECC71"
-                                   Invoked="OnAddToSwipeInvoked" />
-                    </SwipeItems>
-                </SwipeView.LeftItems>
                 <SwipeView.RightItems>
                     <SwipeItems>
                         <!-- Swipe - Right: Add Song -->
