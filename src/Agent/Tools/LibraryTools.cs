@@ -11,39 +11,43 @@ internal static class LibraryTools
 {
     /// <summary>
     /// Searches tracks by name/artist with optional filters for genre, key, and BPM range.
+    /// All parameters are strings to prevent JSON deserialization failures when LLMs send
+    /// empty strings or "null" for numeric/optional parameters.
     /// </summary>
     public static object SearchTracks(
         RekordboxLibrary library,
         string query,
         string? genre = null,
         string? key = null,
-        double? minBpm = null,
-        double? maxBpm = null,
+        string? minBpm = null,
+        string? maxBpm = null,
         string? sortBy = null,
-        int? limit = null)
+        string? limit = null)
     {
         IEnumerable<Track> results = library.Tracks.Values;
 
-        if (!string.IsNullOrWhiteSpace(query))
+        if (HasValue(query))
             results = results.Search(query, TrackSearchFields.All);
 
-        if (!string.IsNullOrWhiteSpace(genre))
-            results = results.Where(t => t.Genre.Contains(genre, StringComparison.OrdinalIgnoreCase));
+        if (HasValue(genre))
+            results = results.Where(t => t.Genre.Contains(genre!, StringComparison.OrdinalIgnoreCase));
 
-        if (!string.IsNullOrWhiteSpace(key))
-            results = results.WhereKey(key);
+        if (HasValue(key))
+            results = results.WhereKey(key!);
 
-        if (minBpm.HasValue || maxBpm.HasValue)
-            results = results.WhereBpmBetween(minBpm ?? 0, maxBpm ?? 999);
+        var parsedMin = ParseDouble(minBpm);
+        var parsedMax = ParseDouble(maxBpm);
+        if (parsedMin.HasValue || parsedMax.HasValue)
+            results = results.WhereBpmBetween(parsedMin ?? 0, parsedMax ?? 999);
 
         var sortKey = TrackSortKey.Title;
-        if (!string.IsNullOrWhiteSpace(sortBy) &&
+        if (HasValue(sortBy) &&
             Enum.TryParse<TrackSortKey>(sortBy, ignoreCase: true, out var parsed))
         {
             sortKey = parsed;
         }
 
-        var cap = Math.Clamp(limit ?? 20, 1, 100);
+        var cap = Math.Clamp(ParseInt(limit) ?? 20, 1, 100);
         var list = results.OrderBy(sortKey).Take(cap).ToList();
 
         return new
@@ -158,6 +162,23 @@ internal static class LibraryTools
         rating = NormalizeRating(t.Rating),
         totalTime = FormatTime(t.TotalTime)
     };
+
+    /// <summary>
+    /// Returns true when a string parameter carries a meaningful value — i.e. it is not
+    /// null, whitespace, a literal "null", or a wildcard that LLMs sometimes send.
+    /// </summary>
+    private static bool HasValue([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && !value.Equals("null", StringComparison.OrdinalIgnoreCase)
+        && value is not ("*" or "any" or "all");
+
+    /// <summary>Parses a string to <see cref="double"/>; returns null for junk values.</summary>
+    private static double? ParseDouble(string? value) =>
+        HasValue(value) && double.TryParse(value, out var d) ? d : null;
+
+    /// <summary>Parses a string to <see cref="int"/>; returns null for junk values.</summary>
+    private static int? ParseInt(string? value) =>
+        HasValue(value) && int.TryParse(value, out var i) ? i : null;
 
     /// <summary>
     /// Converts the rekordbox 0-255 rating scale to 0-5 stars.

@@ -34,7 +34,9 @@ public static class TrackQuery
         if (string.IsNullOrWhiteSpace(query) || fields == TrackSearchFields.None)
             return tracks;
 
-        var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => !t.All(char.IsPunctuation))
+            .ToArray();
         if (terms.Length == 0)
             return tracks;
 

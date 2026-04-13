@@ -216,10 +216,10 @@ internal static class Program
         var tools = new List<AIFunction>
         {
             AIFunctionFactory.Create(
-                (string query, string? genre, string? key, double? minBpm, double? maxBpm, string? sortBy, int? limit) =>
+                (string query, string? genre, string? key, string? minBpm, string? maxBpm, string? sortBy, string? limit) =>
                     LibraryTools.SearchTracks(lib, query, genre, key, minBpm, maxBpm, sortBy, limit),
                 "search_tracks",
-                "Search tracks by name/artist with optional filters for genre, BPM range, and musical key (Camelot notation like '8A'). Returns up to `limit` results (default 20)."),
+                "Search tracks by name/artist with optional filters for genre, BPM range, and musical key (Camelot notation like '8A'). Returns up to `limit` results (default 20). Omit optional parameters you don't need — do not pass empty strings or nulls."),
 
             AIFunctionFactory.Create(
                 (string trackId) =>

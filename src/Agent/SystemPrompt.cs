@@ -44,6 +44,18 @@ internal static class SystemPrompt
           Pad artist and title so the BPM column starts at the same position on every line.
           Always include BPM and key for each track.
 
+        Tool usage:
+        - All filter parameters (genre, key, minBpm, maxBpm, sortBy, limit) are optional.
+          **Omit** a parameter to skip that filter — do NOT pass empty strings or wildcards like "*".
+        - `query` is a free-text substring search across name, artist, album, genre, comments, and label.
+          Just use natural text like "deadmau5" or "jkyl hyde" — punctuation like & is ignored.
+        - `genre` is a case-insensitive substring match (e.g. "techno" matches "Hard Techno").
+        - `key` uses Camelot notation: "8A", "11B", etc.
+        - `sortBy` accepts: Title, Artist, Bpm, Key, Rating, DateAdded.
+        - Example: to find all tracks by an artist, just pass their name as `query` with no other filters.
+        - Example: to find techno tracks between 140-150 BPM, set `query` to "", `genre` to "techno",
+          `minBpm` to 140, `maxBpm` to 150.
+
         Conversation:
         - Remember context from earlier in the conversation. When the user says
           "those tracks", "that playlist", "the first one", etc., refer back to
