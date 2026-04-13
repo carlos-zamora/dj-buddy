@@ -10,7 +10,6 @@ using Spectre.Console;
 internal static class Program
 {
     private static readonly MarkdownRenderer _mdRenderer = new();
-    private static object? _statusContext;
 
     static async Task<int> Main(string[] args)
     {
@@ -154,38 +153,60 @@ internal static class Program
                 }
             }
 
-            // Send to Copilot with a simple spinner wrapper
+            // Send to Copilot with a cancellable background spinner
             try
             {
-                var spinnerTask = AnsiConsole.Status()
-                    .Spinner(Spinner.Known.Dots)
-                    .SpinnerStyle(Style.Parse("dim yellow"))
-                    .StartAsync("Thinking...", async ctx =>
+                using var cts = new CancellationTokenSource();
+                var spinnerFrames = new[] { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' };
+                const string spinnerSuffix = " Thinking...";
+                int spinnerLineLen = 2 + 1 + spinnerSuffix.Length; // "  X Thinking..."
+
+                var spinnerCleared = new TaskCompletionSource();
+                var spinnerBg = Task.Run(async () =>
+                {
+                    int i = 0;
+                    while (!cts.Token.IsCancellationRequested)
                     {
-                        _statusContext = ctx;
-                        session.On(ev =>
+                        Console.Write($"\r  \x1b[2m\x1b[33m{spinnerFrames[i++ % spinnerFrames.Length]}{spinnerSuffix}\x1b[0m");
+                        try { await Task.Delay(80, cts.Token); }
+                        catch (OperationCanceledException) { break; }
+                    }
+                    Console.Write($"\r{new string(' ', spinnerLineLen)}\r");
+                    spinnerCleared.SetResult();
+                });
+
+                bool streamingStarted = false;
+                session.On(ev =>
+                {
+                    if (ev is ToolExecutionStartEvent toolStart)
+                    {
+                        // Clear the spinner line before printing the tool call;
+                        // the spinner will redraw on the new current line on its next tick.
+                        Console.Write($"\r{new string(' ', spinnerLineLen)}\r");
+                        var toolName = toolStart.Data.ToolName;
+                        var argStr = FormatToolArgs(toolStart.Data.Arguments);
+                        AnsiConsole.MarkupLine(argStr.Length > 0
+                            ? $"  [dim]⚙ {Markup.Escape(toolName)}({Markup.Escape(argStr)})[/]"
+                            : $"  [dim]⚙ {Markup.Escape(toolName)}[/]");
+                    }
+                    else if (ev is AssistantMessageDeltaEvent delta)
+                    {
+                        if (!streamingStarted)
                         {
-                            if (ev is ToolExecutionStartEvent toolStart)
-                            {
-                                // Print tool call line above the spinner.
-                                var toolName = toolStart.Data.ToolName;
-                                var argStr = FormatToolArgs(toolStart.Data.Arguments);
-                                AnsiConsole.MarkupLine(argStr.Length > 0
-                                    ? $"  [dim]⚙ {Markup.Escape(toolName)}({Markup.Escape(argStr)})[/]"
-                                    : $"  [dim]⚙ {Markup.Escape(toolName)}[/]");
-                            }
-                            else if (ev is AssistantMessageDeltaEvent delta)
-                            {
-                                // Stop showing spinner context once text starts streaming.
-                                _statusContext = null;
-                                Console.Write(_mdRenderer.Process(delta.Data.DeltaContent));
-                            }
-                        });
+                            streamingStarted = true;
+                            cts.Cancel();
+                            spinnerCleared.Task.Wait(); // blocks until spinner clears its line
+                            Console.WriteLine();        // fresh line before response text
+                        }
+                        Console.Write(_mdRenderer.Process(delta.Data.DeltaContent));
+                    }
+                });
 
-                        await session.SendAndWaitAsync(new MessageOptions { Prompt = trimmed });
-                    });
+                await session.SendAndWaitAsync(new MessageOptions { Prompt = trimmed });
 
-                await spinnerTask;
+                // Cancel spinner in case no deltas arrived (e.g. empty response).
+                cts.Cancel();
+                await spinnerBg;
                 Console.Write(_mdRenderer.Flush());
             }
             catch (Exception ex)
