@@ -120,14 +120,6 @@ internal static class LibraryTools
         var tracks = library.Tracks.Values;
         var withBpm = tracks.Where(t => t.Bpm > 0).ToList();
 
-        var topGenres = tracks
-            .Where(t => !string.IsNullOrWhiteSpace(t.Genre))
-            .GroupBy(t => t.Genre)
-            .OrderByDescending(g => g.Count())
-            .Take(10)
-            .Select(g => new { genre = g.Key, count = g.Count() })
-            .ToList();
-
         var topArtists = tracks
             .Where(t => !string.IsNullOrWhiteSpace(t.Artist))
             .GroupBy(t => t.Artist)
@@ -150,7 +142,6 @@ internal static class LibraryTools
             bpmRange = withBpm.Count > 0
                 ? new { min = withBpm.Min(t => t.Bpm), max = withBpm.Max(t => t.Bpm) }
                 : null,
-            topGenres,
             topArtists,
             keyDistribution
         };

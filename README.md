@@ -16,7 +16,7 @@ A rekordbox.xml browser built with .NET MAUI, plus an AI-powered DJ assistant co
 - **Export to rekordbox** — Export your DJ Buddy playlists back into rekordbox.xml as a `DJ_BUDDY` folder. A backup is created automatically before writing
 - **Auto-reload** — Remembers the last loaded file and reloads it on startup
 - **Cross-platform** — Targets Windows, Android, iOS, and macOS via .NET MAUI
-- **AI assistant** — Console-based DJ Buddy agent (GitHub Copilot SDK) answers natural language queries about your library, searches tracks, lists playlists, and provides library stats
+- **AI assistant** — Console-based DJ Buddy agent (GitHub Copilot SDK) answers natural language queries about your library with multi-turn contextual conversation, colored output with emoji formatting, a thinking spinner, and REPL commands (`/help`, `/load`, `/stats`, `/clear`)
 
 ## Prerequisites
 
@@ -32,8 +32,9 @@ dotnet run -f net10.0-windows10.0.19041.0
 # Android
 dotnet build -f net10.0-android
 
-# Agent console app
-dotnet run --project src/Agent/Agent.csproj -- [path-to-rekordbox.xml]
+# Agent console app (auto-loads default rekordbox.xml, or specify a path)
+dotnet run --project src/Agent/Agent.csproj
+dotnet run --project src/Agent/Agent.csproj -- path/to/rekordbox.xml
 
 # Shared library only
 dotnet build Rekordbox/Rekordbox.csproj
@@ -52,12 +53,37 @@ dotnet test Rekordbox.Tests/Rekordbox.Tests.csproj
 6. Swipe right on a track to add it to Favorites or a doubles playlist
 7. Click **Export** to write your DJ Buddy playlists into the rekordbox.xml
 
+### Agent
+
+Run the DJ Buddy agent for a conversational AI experience in the terminal:
+
+```bash
+dotnet run --project src/Agent/Agent.csproj
+```
+
+On startup the agent loads your rekordbox library (from `%MUSIC%/rekordbox/rekordbox.xml` by default, or pass a path as a CLI argument). If the default file isn't found, you'll be prompted to enter a path.
+
+**REPL commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/load <path>` | Load a different rekordbox.xml (resets conversation) |
+| `/stats` | Show library statistics (genres, artists, keys, BPM range) |
+| `/clear` | Clear the screen |
+| `/exit` | Exit the agent |
+
+Type any question to chat with DJ Buddy — it remembers conversation context, so you can refer back to previous results ("tell me more about the first one", "find tracks that mix with those").
+
 ## Project Structure
 
 ```
 ├── Agent/                         # Console-based AI assistant (GitHub Copilot SDK)
 │   ├── Program.cs                 # Entry point, REPL loop, Copilot session wiring
-│   ├── SystemPrompt.cs            # DJ Buddy agent persona
+│   ├── SystemPrompt.cs            # DJ Buddy agent persona and tool-use guidelines
+│   ├── ConsoleUi.cs               # Formatted output (banner, help, stats, prompts)
+│   ├── Spinner.cs                 # Async VT-powered thinking indicator
+│   ├── Vt.cs                      # Virtual Terminal escape sequence constants
 │   └── Tools/
 │       └── LibraryTools.cs        # 5 query tools (search, details, playlists, stats)
 ├── Rekordbox/                     # Shared .NET library (net10.0, no MAUI dependency)
