@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Windows.Input;
 using CommunityToolkit.Maui;
 using CommunityToolkit.Maui.Extensions;
 using DJBuddy.MAUI.Services;
@@ -30,17 +29,13 @@ public partial class PlaylistPage : ContentPage
     private bool _isCollection;
     private Track? _selectedTrack;
     private CancellationTokenSource? _scrollCts;
+    private CancellationTokenSource? _searchCts;
     private SortField _sortField = SortField.None;
     private bool _sortAscending = true;
     private string _searchText = "";
     private string? _keyFilter;
     private bool? _isNarrowLegend;
 
-    /// <summary>
-    /// Bound to <see cref="CommunityToolkit.Maui.Behaviors.UserStoppedTypingBehavior"/> on the
-    /// search entry. Receives the current text value after the user pauses typing.
-    /// </summary>
-    public ICommand SearchCommand { get; }
 
     public PlaylistNode? Node
     {
@@ -86,11 +81,6 @@ public partial class PlaylistPage : ContentPage
 
     public PlaylistPage()
     {
-        SearchCommand = new Command<string>(text =>
-        {
-            _searchText = text ?? "";
-            BuildContent();
-        });
         InitializeComponent();
         // Workaround for MauiIcons URL-style namespace: https://github.com/AathifMahir/MauiIcons#workaround
         _ = new MauiIcon();
@@ -275,6 +265,19 @@ public partial class PlaylistPage : ContentPage
         if (letter is not ('A' or 'B')) return false;
 
         return int.TryParse(key.AsSpan(0, key.Length - 1), out number) && number >= 1 && number <= 12;
+    }
+
+    private async void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(400, _searchCts.Token);
+            _searchText = e.NewTextValue ?? "";
+            BuildContent();
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void OnTrackTapped(object? sender, EventArgs e)

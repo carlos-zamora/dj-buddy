@@ -121,12 +121,8 @@
             <Grid x:Name="FilterBar" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
                   Padding="16,4" IsVisible="False">
                 <Entry x:Name="SearchEntry" Placeholder="Search title or artist..."
-                       FontSize="14" ClearButtonVisibility="WhileEditing">
-                    <Entry.Behaviors>
-                        <mct:UserStoppedTypingBehavior StoppedTypingTimeThreshold="400"
-                                                       Command="{Binding SearchCommand}" />
-                    </Entry.Behaviors>
-                </Entry>
+                       FontSize="14" ClearButtonVisibility="WhileEditing"
+                       TextChanged="OnSearchTextChanged" />
                 <Button x:Name="DateAddedSortButton" Grid.Column="1"
                         Text="Recently Added" FontSize="13" Padding="12,0"
                         HeightRequest="36" CornerRadius="6"
