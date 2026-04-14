@@ -75,6 +75,45 @@ internal static class Program
 
         ConsoleUi.PrintWelcome();
 
+        // Per-request state shared with the event handler registered below.
+        // Reset at the start of each SendAndWaitAsync call.
+        CancellationTokenSource? loopCts = null;
+        bool loopStreamingStarted = false;
+        TaskCompletionSource? loopSpinnerCleared = null;
+        const string spinnerSuffix = " Thinking...";
+        const int spinnerLineLen = 15; // "  X Thinking..." — 2 indent + 1 frame char + 12 suffix chars
+
+        // Register the event handler exactly once per session object.
+        // Calling session.On() multiple times adds multiple handlers — registering
+        // inside the REPL loop caused one extra handler per message (hence duplication).
+        void RegisterSessionHandler(CopilotSession s) => s.On(ev =>
+        {
+            if (ev is ToolExecutionStartEvent toolStart)
+            {
+                // Clear the spinner line before printing the tool call;
+                // the spinner will redraw on the new current line on its next tick.
+                Console.Write($"\r{new string(' ', spinnerLineLen)}\r");
+                var toolName = toolStart.Data.ToolName;
+                var argStr = FormatToolArgs(toolStart.Data.Arguments);
+                AnsiConsole.MarkupLine(argStr.Length > 0
+                    ? $"  [dim]⚙ {Markup.Escape(toolName)}({Markup.Escape(argStr)})[/]"
+                    : $"  [dim]⚙ {Markup.Escape(toolName)}[/]");
+            }
+            else if (ev is AssistantMessageDeltaEvent delta)
+            {
+                if (!loopStreamingStarted)
+                {
+                    loopStreamingStarted = true;
+                    loopCts?.Cancel();
+                    loopSpinnerCleared?.Task.Wait(); // blocks until spinner clears its line
+                    Console.WriteLine();             // fresh line before response text
+                }
+                Console.Write(_mdRenderer.Process(delta.Data.DeltaContent));
+            }
+        });
+
+        RegisterSessionHandler(session);
+
         while (true)
         {
             ConsoleUi.PrintPrompt();
@@ -135,6 +174,7 @@ internal static class Program
                             (library, playlistCount) = await LoadLibraryAsync(newPath);
                             xmlPath = newPath;
                             session = CreateSession(client, library, playlistCount);
+                            RegisterSessionHandler(session); // new session object — register once
                             _mdRenderer.Flush(); // Reset renderer state for new conversation.
                             ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
                             ConsoleUi.PrintStatus("Library reloaded. Conversation history has been reset.");
@@ -158,10 +198,12 @@ internal static class Program
             {
                 using var cts = new CancellationTokenSource();
                 var spinnerFrames = new[] { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' };
-                const string spinnerSuffix = " Thinking...";
-                int spinnerLineLen = 2 + 1 + spinnerSuffix.Length; // "  X Thinking..."
 
                 var spinnerCleared = new TaskCompletionSource();
+                loopCts = cts;
+                loopStreamingStarted = false;
+                loopSpinnerCleared = spinnerCleared;
+
                 var spinnerBg = Task.Run(async () =>
                 {
                     int i = 0;
@@ -173,33 +215,6 @@ internal static class Program
                     }
                     Console.Write($"\r{new string(' ', spinnerLineLen)}\r");
                     spinnerCleared.SetResult();
-                });
-
-                bool streamingStarted = false;
-                session.On(ev =>
-                {
-                    if (ev is ToolExecutionStartEvent toolStart)
-                    {
-                        // Clear the spinner line before printing the tool call;
-                        // the spinner will redraw on the new current line on its next tick.
-                        Console.Write($"\r{new string(' ', spinnerLineLen)}\r");
-                        var toolName = toolStart.Data.ToolName;
-                        var argStr = FormatToolArgs(toolStart.Data.Arguments);
-                        AnsiConsole.MarkupLine(argStr.Length > 0
-                            ? $"  [dim]⚙ {Markup.Escape(toolName)}({Markup.Escape(argStr)})[/]"
-                            : $"  [dim]⚙ {Markup.Escape(toolName)}[/]");
-                    }
-                    else if (ev is AssistantMessageDeltaEvent delta)
-                    {
-                        if (!streamingStarted)
-                        {
-                            streamingStarted = true;
-                            cts.Cancel();
-                            spinnerCleared.Task.Wait(); // blocks until spinner clears its line
-                            Console.WriteLine();        // fresh line before response text
-                        }
-                        Console.Write(_mdRenderer.Process(delta.Data.DeltaContent));
-                    }
                 });
 
                 await session.SendAndWaitAsync(new MessageOptions { Prompt = trimmed });
