@@ -72,6 +72,8 @@ internal static class ConsoleUi
         table.AddRow("[bold]/help[/]", "Show this help message");
         table.AddRow("[bold]/load <path>[/]", "Load a different rekordbox.xml (resets conversation)");
         table.AddRow("[bold]/stats[/]", "Show library statistics");
+        table.AddRow("[bold]/export[/]", "Export DJ_BUDDY playlists into rekordbox.xml (backs up original as .bak)");
+        table.AddRow("[bold]/export <path>[/]", "Export DJ_BUDDY playlists to a specific output file");
         table.AddRow("[bold]/clear[/]", "Clear the screen");
         table.AddRow("[bold]/exit[/]", "Exit DJ Buddy");
 

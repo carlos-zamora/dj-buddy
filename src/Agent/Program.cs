@@ -69,7 +69,8 @@ internal static class Program
 
         // ── Create session ──────────────────────────────────────────────────────────
 
-        var session = CreateSession(client, library, playlistCount);
+        var store = new AgentPlaylistStore();
+        var session = CreateSession(client, library, playlistCount, store);
 
         // ── REPL ────────────────────────────────────────────────────────────────────
 
@@ -173,7 +174,8 @@ internal static class Program
                         {
                             (library, playlistCount) = await LoadLibraryAsync(newPath);
                             xmlPath = newPath;
-                            session = CreateSession(client, library, playlistCount);
+                            store = new AgentPlaylistStore();
+                            session = CreateSession(client, library, playlistCount, store);
                             RegisterSessionHandler(session); // new session object — register once
                             _mdRenderer.Flush(); // Reset renderer state for new conversation.
                             ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
@@ -186,6 +188,30 @@ internal static class Program
                         }
 
                         continue;
+
+                    case "/export":
+                    {
+                        if (!store.HasAnyTracks)
+                        {
+                            ConsoleUi.PrintError("No tracks in agent playlists to export. Ask DJ Buddy to build a playlist first.");
+                            continue;
+                        }
+
+                        var outputPath = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1])
+                            ? parts[1].Trim().Trim('"')
+                            : xmlPath;
+
+                        try
+                        {
+                            await HandleExportAsync(store, xmlPath, outputPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            ConsoleUi.PrintError($"Export failed: {ex.Message}");
+                        }
+
+                        continue;
+                    }
 
                     default:
                         ConsoleUi.PrintError($"Unknown command: {cmd}. Type /help for available commands.");
@@ -247,7 +273,8 @@ internal static class Program
         return (lib, plCount);
     }
 
-    private static CopilotSession CreateSession(CopilotClient copilotClient, RekordboxLibrary lib, int plCount)
+    private static CopilotSession CreateSession(
+        CopilotClient copilotClient, RekordboxLibrary lib, int plCount, AgentPlaylistStore store)
     {
         var tools = new List<AIFunction>
         {
@@ -278,6 +305,28 @@ internal static class Program
                 () => LibraryTools.GetLibraryStats(lib),
                 "get_library_stats",
                 "Get summary statistics about the library: total tracks, artist/key distribution, BPM range."),
+
+            AIFunctionFactory.Create(
+                (string name) => PlaylistTools.CreatePlaylist(store, name),
+                "create_playlist",
+                "Create a new named playlist in the agent's DJ_BUDDY folder. The playlist name must be unique and non-empty."),
+
+            AIFunctionFactory.Create(
+                (string playlistName, string trackId) =>
+                    PlaylistTools.AddTrackToPlaylist(store, lib, playlistName, trackId),
+                "add_track_to_playlist",
+                "Add a track to a named agent playlist by its track ID. Use search_tracks or get_track_details first to find a valid track ID."),
+
+            AIFunctionFactory.Create(
+                (string playlistName, string trackId) =>
+                    PlaylistTools.RemoveTrackFromPlaylist(store, playlistName, trackId),
+                "remove_track_from_playlist",
+                "Remove a track from a named agent playlist."),
+
+            AIFunctionFactory.Create(
+                () => PlaylistTools.ListAgentPlaylists(store, lib),
+                "list_agent_playlists",
+                "List all agent-created playlists with their track counts and full track details."),
         };
 
         var sess = copilotClient.CreateSessionAsync(new SessionConfig
@@ -294,6 +343,35 @@ internal static class Program
         }).GetAwaiter().GetResult();
 
         return sess;
+    }
+
+    /// <summary>
+    /// Patches the source rekordbox.xml with the agent's DJ_BUDDY folder and writes
+    /// the result to <paramref name="outputPath"/>. Creates a <c>.bak</c> backup first
+    /// when overwriting the source file in-place.
+    /// </summary>
+    private static async Task HandleExportAsync(
+        AgentPlaylistStore store, string sourceXmlPath, string outputPath)
+    {
+        if (string.Equals(sourceXmlPath, outputPath, StringComparison.OrdinalIgnoreCase))
+        {
+            var backupPath = sourceXmlPath + ".bak";
+            File.Copy(sourceXmlPath, backupPath, overwrite: true);
+            ConsoleUi.PrintStatus($"Backup saved to {backupPath}");
+        }
+
+        byte[] patchedBytes;
+        await using (var inputStream = File.OpenRead(sourceXmlPath))
+        {
+            patchedBytes = await RekordboxExporter.PatchPlaylistNodeAsync(
+                inputStream, store.DjBuddyFolder);
+        }
+
+        await File.WriteAllBytesAsync(outputPath, patchedBytes);
+
+        var totalTracks = store.DjBuddyFolder.Children.Sum(c => c.TrackKeys.Count);
+        ConsoleUi.PrintStatus(
+            $"Exported {store.DjBuddyFolder.Children.Count} playlist(s) ({totalTracks} track(s)) to {outputPath}");
     }
 
     /// <summary>

@@ -53,7 +53,7 @@ internal static class LibraryTools
         return new
         {
             count = list.Count,
-            tracks = list.Select(ToSummary).ToList()
+            tracks = list.Select(TrackSummary.Of).ToList()
         };
     }
 
@@ -75,9 +75,9 @@ internal static class LibraryTools
             bpm = t.Bpm,
             key = t.Key,
             tonality = t.Tonality,
-            rating = NormalizeRating(t.Rating),
+            rating = TrackSummary.NormalizeRating(t.Rating),
             playCount = t.PlayCount,
-            totalTime = FormatTime(t.TotalTime),
+            totalTime = TrackSummary.FormatTime(t.TotalTime),
             dateAdded = t.DateAdded?.ToString("yyyy-MM-dd"),
             label = t.Label,
             remixer = t.Remixer,
@@ -112,7 +112,7 @@ internal static class LibraryTools
         if (node.IsFolder)
             return new { error = $"'{playlistName}' is a folder, not a playlist. Use list_playlists to see its contents." };
 
-        var tracks = node.GetTracks(library).Select(ToSummary).ToList();
+        var tracks = node.GetTracks(library).Select(TrackSummary.Of).ToList();
         return new { playlistName = node.Name, count = tracks.Count, tracks };
     }
 
@@ -151,18 +151,6 @@ internal static class LibraryTools
         };
     }
 
-    private static object ToSummary(Track t) => new
-    {
-        trackId = t.TrackId,
-        name = t.Name,
-        artist = t.Artist,
-        bpm = t.Bpm,
-        key = t.Key,
-        genre = t.Genre,
-        rating = NormalizeRating(t.Rating),
-        totalTime = FormatTime(t.TotalTime)
-    };
-
     /// <summary>
     /// Returns true when a string parameter carries a meaningful value — i.e. it is not
     /// null, whitespace, a literal "null", or a wildcard that LLMs sometimes send.
@@ -179,22 +167,4 @@ internal static class LibraryTools
     /// <summary>Parses a string to <see cref="int"/>; returns null for junk values.</summary>
     private static int? ParseInt(string? value) =>
         HasValue(value) && int.TryParse(value, out var i) ? i : null;
-
-    /// <summary>
-    /// Converts the rekordbox 0-255 rating scale to 0-5 stars.
-    /// </summary>
-    private static int NormalizeRating(int raw) =>
-        raw <= 0 ? 0 : Math.Clamp(raw / 51, 1, 5);
-
-    /// <summary>
-    /// Formats a duration in seconds as "m:ss" or "h:mm:ss".
-    /// </summary>
-    private static string FormatTime(int totalSeconds)
-    {
-        if (totalSeconds <= 0) return "0:00";
-        var ts = TimeSpan.FromSeconds(totalSeconds);
-        return ts.TotalHours >= 1
-            ? $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}"
-            : $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
-    }
 }
