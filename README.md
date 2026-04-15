@@ -17,6 +17,7 @@ A rekordbox.xml browser built with .NET MAUI, plus an AI-powered DJ assistant co
 - **Auto-reload** — Remembers the last loaded file and reloads it on startup
 - **Cross-platform** — Targets Windows, Android, iOS, and macOS via .NET MAUI
 - **AI assistant** — Console-based DJ Buddy agent (GitHub Copilot SDK) answers natural language queries about your library with multi-turn contextual conversation, colored output with emoji formatting, a thinking spinner, and REPL commands (`/help`, `/load`, `/stats`, `/clear`)
+- **Graph analysis** — Optional `Rekordbox.Graph` library builds a QuikGraph `BidirectionalGraph` of your library with directed harmonic-compatibility edges (same key, adjacent, energy boost/drop, with half/double-time BPM matching) and playlist co-occurrence edges — ready for shortest-path, clustering, and other graph algorithms
 
 ## Prerequisites
 
@@ -104,6 +105,16 @@ Type any question to chat with DJ Buddy — it remembers conversation context, s
 │       ├── TrackSearchFields.cs   # [Flags] enum for search field selection
 │       ├── TrackSortKey.cs        # Sort key enum
 │       └── CamelotKeyComparer.cs  # Numeric Camelot key ordering
+├── Rekordbox.Graph/               # Optional graph layer (net10.0, depends on QuikGraph)
+│   ├── TrackEdge.cs               # Abstract directed IEdge<Track> base
+│   ├── CompatibilityEdge.cs       # Harmonic/BPM edge (Relation, Tier, IsHalfTimeMatch)
+│   ├── CoOccurrenceEdge.cs        # Playlist co-occurrence edge (PlaylistCount)
+│   ├── HarmonicRelation.cs        # Same / Adjacent / EnergyBoost / EnergyDrop
+│   ├── BpmTier.cs                 # Same / Close / Medium / Far buckets
+│   ├── CamelotWheel.cs            # Key parsing + wheel arithmetic
+│   ├── TrackGraphOptions.cs       # Tier thresholds, include flags, weight knobs
+│   ├── TrackQualityWeight.cs      # Rating + freshness weight contribution
+│   └── TrackGraphBuilder.cs       # Build BidirectionalGraph<Track, TrackEdge>
 ├── Rekordbox.Tests/               # xUnit v3 tests for the shared library
 │   ├── Fixtures/                  # Embedded XML fixtures (minimal.xml, round_trip.xml)
 │   └── Xml/ Query/                # Test classes mirroring library structure

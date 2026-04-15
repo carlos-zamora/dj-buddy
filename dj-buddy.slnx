@@ -1,6 +1,13 @@
 <Solution>
-  <Project Path="src/Agent/Agent.csproj" />
-  <Project Path="src/MAUI/DJBuddyMAUI.csproj" />
-  <Project Path="src/Rekordbox/Rekordbox.csproj" />
-  <Project Path="src/Rekordbox.Tests/Rekordbox.Tests.csproj" />
+  <Folder Name="/Apps/">
+    <Project Path="src/MAUI/DJBuddyMAUI.csproj" />
+    <Project Path="src/Agent/Agent.csproj" />
+  </Folder>
+  <Folder Name="/Libraries/">
+    <Project Path="src/Rekordbox/Rekordbox.csproj" />
+    <Project Path="src/Rekordbox.Graph/Rekordbox.Graph.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="src/Rekordbox.Tests/Rekordbox.Tests.csproj" />
+  </Folder>
 </Solution>
