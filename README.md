@@ -86,7 +86,10 @@ Type any question to chat with DJ Buddy — it remembers conversation context, s
 │   ├── Spinner.cs                 # Async VT-powered thinking indicator
 │   ├── Vt.cs                      # Virtual Terminal escape sequence constants
 │   └── Tools/
-│       └── LibraryTools.cs        # 5 query tools (search, details, playlists, stats)
+│       ├── LibraryTools.cs        # 5 query tools (search, details, playlists, stats)
+│       ├── PlaylistTools.cs       # Agent-owned playlist CRUD tools
+│       ├── GraphTools.cs          # 2 graph tools (suggest_next_track, find_similar_tracks)
+│       └── TrackSummary.cs        # Shared track-projection helper
 ├── Rekordbox/                     # Shared .NET library (net10.0, no MAUI dependency)
 │   ├── Models/
 │   │   ├── Track.cs               # Full-fidelity track model (~25 attributes + cues + beatgrid)

@@ -2,9 +2,11 @@ using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 using DJBuddy.Agent;
 using DJBuddy.Agent.Tools;
+using DJBuddy.Rekordbox.Graph;
 using DJBuddy.Rekordbox.Models;
 using DJBuddy.Rekordbox.Xml;
 using DJBuddy.Rekordbox.Query;
+using QuikGraph;
 using Spectre.Console;
 
 internal static class Program
@@ -61,6 +63,12 @@ internal static class Program
         var (library, playlistCount) = await LoadLibraryAsync(xmlPath);
         ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
 
+        // ── Build graph in background ───────────────────────────────────────────────
+        // Graph construction is CPU-bound and can take a moment on large libraries. Kick it
+        // off immediately so it overlaps with the Copilot connection; graph tools await the
+        // resulting task before traversing it.
+        var graphTask = Task.Run(() => TrackGraphBuilder.Build(library));
+
         // ── Connect to GitHub Copilot ───────────────────────────────────────────────
 
         ConsoleUi.PrintStatus("Connecting to GitHub Copilot...");
@@ -70,7 +78,7 @@ internal static class Program
         // ── Create session ──────────────────────────────────────────────────────────
 
         var store = new AgentPlaylistStore();
-        var session = CreateSession(client, library, playlistCount, store);
+        var session = CreateSession(client, library, graphTask, playlistCount, store);
 
         // ── REPL ────────────────────────────────────────────────────────────────────
 
@@ -148,6 +156,10 @@ internal static class Program
                         ConsoleUi.PrintHelp();
                         continue;
 
+                    case "/tools":
+                        ConsoleUi.PrintTools();
+                        continue;
+
                     case "/clear":
                         AnsiConsole.Clear();
                         continue;
@@ -175,7 +187,8 @@ internal static class Program
                             (library, playlistCount) = await LoadLibraryAsync(newPath);
                             xmlPath = newPath;
                             store = new AgentPlaylistStore();
-                            session = CreateSession(client, library, playlistCount, store);
+                            graphTask = Task.Run(() => TrackGraphBuilder.Build(library));
+                            session = CreateSession(client, library, graphTask, playlistCount, store);
                             RegisterSessionHandler(session); // new session object — register once
                             _mdRenderer.Flush(); // Reset renderer state for new conversation.
                             ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
@@ -274,7 +287,11 @@ internal static class Program
     }
 
     private static CopilotSession CreateSession(
-        CopilotClient copilotClient, RekordboxLibrary lib, int plCount, AgentPlaylistStore store)
+        CopilotClient copilotClient,
+        RekordboxLibrary lib,
+        Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
+        int plCount,
+        AgentPlaylistStore store)
     {
         var tools = new List<AIFunction>
         {
@@ -327,6 +344,18 @@ internal static class Program
                 () => PlaylistTools.ListAgentPlaylists(store, lib),
                 "list_agent_playlists",
                 "List all agent-created playlists with their track counts and full track details."),
+
+            AIFunctionFactory.Create(
+                (string trackId, string? key, string? genre, string? minBpm, string? maxBpm, string? limit) =>
+                    GraphTools.SuggestNextTrack(lib, graphTask, trackId, key, genre, minBpm, maxBpm, limit),
+                "suggest_next_track",
+                "Given a current track ID, return compatible next-track candidates sorted by transition quality (harmonic key + BPM proximity). Each result includes the harmonic relation (Same/Adjacent/EnergyBoost/EnergyDrop), BPM delta percent, and whether it's a half/double-time match. Optional filters: key (Camelot like '8A'), genre, minBpm, maxBpm, limit (default 10)."),
+
+            AIFunctionFactory.Create(
+                (string trackId, string? limit) =>
+                    GraphTools.FindSimilarTracks(lib, graphTask, trackId, limit),
+                "find_similar_tracks",
+                "Given a track ID, return tracks that are both harmonically compatible AND/OR frequently co-occur in playlists. Each result includes both compatibility and co-occurrence evidence where available, plus a combined similarity score. Optional limit (default 10)."),
         };
 
         var sess = copilotClient.CreateSessionAsync(new SessionConfig
