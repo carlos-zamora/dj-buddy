@@ -63,6 +63,7 @@
 		     supported by SourceGen. Override these pages to use runtime inflation instead. -->
 		<MauiXaml Update="MainPage.xaml" Inflator="Runtime" />
 		<MauiXaml Update="Pages\PlaylistPage.xaml" Inflator="Runtime" />
+		<MauiXaml Update="Pages\TrackInfoPage.xaml" Inflator="Runtime" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -93,6 +94,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Rekordbox\Rekordbox.csproj" />
+		<ProjectReference Include="..\Rekordbox.Graph\Rekordbox.Graph.csproj" />
 	</ItemGroup>
 
 </Project>

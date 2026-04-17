@@ -298,6 +298,49 @@ public partial class PlaylistPage : ContentPage
             await ShowAddToPlaylistSheet(item);
     }
 
+    /// <summary>
+    /// Shows an add-only action sheet (Favorites / existing playlist / new playlist). Used by the
+    /// touch swipe-right gesture, which is semantically "add" — so no "View info" entry here.
+    /// Long-press and right-click use the fuller <see cref="ShowTrackContextMenu"/> instead.
+    /// </summary>
+    private async Task ShowAddToPlaylistSheet(TrackDisplayItem item)
+    {
+        const string FavoritesOption = "\u2B50 Favorites";
+        const string NewPlaylistOption = "+ New playlist...";
+
+        var options = new List<string> { FavoritesOption };
+        options.AddRange(DjBuddyPlaylistStore.GetPlaylistNames());
+        options.Add(NewPlaylistOption);
+
+        var trackName = item.Track.Name;
+        if (trackName.Length > 30)
+            trackName = trackName[..27] + "...";
+
+        var result = await DisplayActionSheetAsync(
+            $"Add \"{trackName}\"", "Cancel", null, options.ToArray());
+
+        if (string.IsNullOrEmpty(result) || result == "Cancel") return;
+
+        if (result == NewPlaylistOption)
+        {
+            var name = await DisplayPromptAsync("New Playlist", "Enter playlist name:",
+                initialValue: item.Track.Name);
+            if (string.IsNullOrWhiteSpace(name)) return;
+            DjBuddyPlaylistStore.CreatePlaylist(name);
+            DjBuddyPlaylistStore.AddTrackToPlaylist(name, item.Track.TrackId);
+        }
+        else if (result == FavoritesOption)
+        {
+            DjBuddyPlaylistStore.AddTrackToFavorites(item.Track.TrackId);
+        }
+        else
+        {
+            DjBuddyPlaylistStore.AddTrackToPlaylist(result, item.Track.TrackId);
+        }
+
+        await DjBuddyPlaylistStore.SaveAsync();
+    }
+
     private async void OnRemoveFromDjBuddyInvoked(object? sender, EventArgs e)
     {
         var item = (sender as SwipeItem)?.BindingContext as TrackDisplayItem
@@ -310,40 +353,67 @@ public partial class PlaylistPage : ContentPage
         BuildContent();
     }
 
+    /// <summary>
+    /// Handles long-press on a track row (all platforms via MCT <c>TouchBehavior</c>). Opens the
+    /// unified track context menu — the same menu shown by desktop right-click — so users get
+    /// one mental model regardless of input device.
+    /// </summary>
+    private async void OnTrackLongPressed(object? sender, CommunityToolkit.Maui.Core.LongPressCompletedEventArgs e)
+    {
+        if (sender is not BindableObject bindable || bindable.BindingContext is not TrackDisplayItem item)
+            return;
+        await ShowTrackContextMenu(item);
+    }
+
+    /// <summary>
+    /// Handles desktop right-click on a track row. Opens the unified track context menu.
+    /// Guarded to Desktop only because <c>Buttons="Secondary"</c> also fires on touch.
+    /// </summary>
     private async void OnTrackRightClicked(object? sender, EventArgs e)
     {
-        // Buttons.Secondary is not supported on touch idioms — both recognizers fire on a
-        // normal tap, which would open the popup instead of just selecting the track.
-        // Swipe handles "add" on Phone/Tablet; this handler is Desktop-only.
         var idiom = DeviceInfo.Idiom;
         if (idiom == DeviceIdiom.Phone || idiom == DeviceIdiom.Tablet)
             return;
 
         if (sender is not BindableObject bindable || bindable.BindingContext is not TrackDisplayItem item)
             return;
-        await ShowAddToPlaylistSheet(item);
+        await ShowTrackContextMenu(item);
     }
 
     /// <summary>
-    /// Shows an action sheet letting the user add a track to Favorites,
-    /// an existing DJ Buddy playlist, or a newly created one.
+    /// Shows the unified track context menu: View info, Add to Favorites, add to an existing
+    /// DJ Buddy playlist, or create a new one. Used by both desktop right-click and long-press
+    /// so the mental model is consistent across input devices.
     /// </summary>
-    private async Task ShowAddToPlaylistSheet(TrackDisplayItem item)
+    private async Task ShowTrackContextMenu(TrackDisplayItem item)
     {
-        var options = new List<string> { "\u2B50 Favorites" };
+        const string ViewInfoOption = "\u2139\uFE0F View track info";
+        const string FavoritesOption = "\u2B50 Favorites";
+        const string NewPlaylistOption = "+ New playlist...";
+
+        var options = new List<string> { ViewInfoOption, FavoritesOption };
         options.AddRange(DjBuddyPlaylistStore.GetPlaylistNames());
-        options.Add("+ New playlist...");
+        options.Add(NewPlaylistOption);
 
         var trackName = item.Track.Name;
         if (trackName.Length > 30)
             trackName = trackName[..27] + "...";
 
         var result = await DisplayActionSheetAsync(
-            $"Add \"{trackName}\"", "Cancel", null, options.ToArray());
+            $"\"{trackName}\"", "Cancel", null, options.ToArray());
 
         if (string.IsNullOrEmpty(result) || result == "Cancel") return;
 
-        if (result == "+ New playlist...")
+        if (result == ViewInfoOption)
+        {
+            await Shell.Current.GoToAsync("trackinfo", new Dictionary<string, object>
+            {
+                { "Track", item.Track },
+            });
+            return;
+        }
+
+        if (result == NewPlaylistOption)
         {
             var name = await DisplayPromptAsync("New Playlist", "Enter playlist name:",
                 initialValue: item.Track.Name);
@@ -351,7 +421,7 @@ public partial class PlaylistPage : ContentPage
             DjBuddyPlaylistStore.CreatePlaylist(name);
             DjBuddyPlaylistStore.AddTrackToPlaylist(name, item.Track.TrackId);
         }
-        else if (result == "\u2B50 Favorites")
+        else if (result == FavoritesOption)
         {
             DjBuddyPlaylistStore.AddTrackToFavorites(item.Track.TrackId);
         }

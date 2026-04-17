@@ -13,6 +13,7 @@ A rekordbox.xml browser built with .NET MAUI, plus an AI-powered DJ assistant co
   - Energy boost keys (amber) — raise the energy
   - Energy drop keys (purple) — wind down
 - **Favorites & doubles** — Swipe right on a track (or right-click on desktop) to add it to Favorites or a custom "doubles" playlist. Playlists are saved locally and persist across sessions
+- **Track Info page** — Right-click (desktop) or long-press (touch) any track to open a context menu whose first option is "View track info" — a detail view showing full metadata plus three lazily-loaded groupings: playlists it appears on, harmonically-compatible tracks, and playlist co-occurring tracks (graph-powered)
 - **Export to rekordbox** — Export your DJ Buddy playlists back into rekordbox.xml as a `DJ_BUDDY` folder. A backup is created automatically before writing
 - **Auto-reload** — Remembers the last loaded file and reloads it on startup
 - **Cross-platform** — Targets Windows, Android, iOS, and macOS via .NET MAUI
@@ -123,9 +124,11 @@ Type any question to chat with DJ Buddy — it remembers conversation context, s
 │   └── Xml/ Query/                # Test classes mirroring library structure
 ├── Services/
 │   ├── DjBuddyPlaylistStore.cs    # Static store for favorites & doubles (JSON persistence)
+│   ├── GraphStore.cs              # Lazily builds + caches the shared Rekordbox.Graph on background task
 │   └── LibraryStore.cs            # Static singleton holding the current library
 ├── Pages/
-│   └── PlaylistPage.xaml.cs       # Playlist view with sorting, search, key highlights
+│   ├── PlaylistPage.xaml.cs       # Playlist view with sorting, search, key highlights
+│   └── TrackInfoPage.xaml.cs      # Track detail view (metadata + graph-backed related tracks)
 ├── MainPage.xaml.cs               # Welcome screen + top-level library view
 └── dj-buddy.csproj               # MAUI app, references Rekordbox.csproj
 ```

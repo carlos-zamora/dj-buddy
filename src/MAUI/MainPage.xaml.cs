@@ -70,7 +70,9 @@ public partial class MainPage : ContentPage
 
             using var stream = await result.OpenReadAsync();
             _library = await RekordboxParser.ParseAsync(stream);
+            GraphStore.Reset();
             LibraryStore.Library = _library;
+            GraphStore.BeginBuild(_library);
 
             var bookmark = await _bookmarkService.SaveBookmarkAsync(result.FullPath);
             if (bookmark != null)
@@ -99,7 +101,9 @@ public partial class MainPage : ContentPage
             if (stream == null) return;
 
             _library = await RekordboxParser.ParseAsync(stream);
+            GraphStore.Reset();
             LibraryStore.Library = _library;
+            GraphStore.BeginBuild(_library);
             ShowLibrary();
         }
         catch

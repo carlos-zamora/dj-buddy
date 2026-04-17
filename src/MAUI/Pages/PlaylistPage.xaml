@@ -38,15 +38,26 @@
                     </SwipeItems>
                 </SwipeView.RightItems>
 
-                <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0"
-                      BackgroundColor="{Binding HighlightColor}">
+                <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0">
                     <Grid.GestureRecognizers>
                         <!-- Tap: See Compatible Songs -->
                         <TapGestureRecognizer Tapped="OnTrackTapped" />
-                        
+
                         <!-- Right-Click: Add Song -->
                         <TapGestureRecognizer Tapped="OnTrackRightClicked" Buttons="Secondary" />
                     </Grid.GestureRecognizers>
+                    <Grid.Behaviors>
+                        <!-- Long-press: Open track context menu. TouchBehavior snapshots
+                             DefaultBackgroundColor at attach time and does not react to
+                             later PropertyChanged — so HighlightColor lives on a sibling
+                             BoxView below instead. -->
+                        <mct:TouchBehavior LongPressCompleted="OnTrackLongPressed"
+                                           LongPressDuration="500"
+                                           DefaultBackgroundColor="Transparent" />
+                    </Grid.Behaviors>
+
+                    <!-- Highlight layer: spans all columns, rendered behind content. -->
+                    <BoxView Grid.ColumnSpan="4" Color="{Binding HighlightColor}" />
 
                     <!-- Selection accent bar -->
                     <BoxView Color="{StaticResource Primary}" IsVisible="{Binding IsSelected}"
@@ -78,12 +89,20 @@
                     </SwipeItems>
                 </SwipeView.RightItems>
 
-                <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0"
-                      BackgroundColor="{Binding HighlightColor}">
+                <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0">
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnTrackTapped" />
                         <TapGestureRecognizer Tapped="OnTrackRightClicked" Buttons="Secondary" />
                     </Grid.GestureRecognizers>
+                    <Grid.Behaviors>
+                        <!-- Long-press: Open track context menu. See TrackTemplate for
+                             why HighlightColor lives on a sibling BoxView below. -->
+                        <mct:TouchBehavior LongPressCompleted="OnTrackLongPressed"
+                                           LongPressDuration="500"
+                                           DefaultBackgroundColor="Transparent" />
+                    </Grid.Behaviors>
+
+                    <BoxView Grid.ColumnSpan="4" Color="{Binding HighlightColor}" />
 
                     <BoxView Color="{StaticResource Primary}" IsVisible="{Binding IsSelected}"
                              WidthRequest="4" HorizontalOptions="Start" />

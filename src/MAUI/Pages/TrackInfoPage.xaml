@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:pages="clr-namespace:DJBuddy.MAUI.Pages"
+             xmlns:mi="http://www.aathifmahir.com/dotnet/2022/maui/icons"
+             xmlns:mct="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             x:Class="DJBuddy.MAUI.Pages.TrackInfoPage"
+             Title="Track Info">
+
+    <ContentPage.Resources>
+
+        <!-- Row template for "Appears on..." -->
+        <DataTemplate x:Key="PlaylistRowTemplate" x:DataType="pages:PlaylistRow">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Padding="16,10">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnPlaylistRowTapped" />
+                </Grid.GestureRecognizers>
+                <mi:MauiIcon Icon="{mi:Material Icon=QueueMusic}" IconSize="20"
+                             VerticalOptions="Center" />
+                <Label Grid.Column="1" Text="{Binding Name}" FontSize="15"
+                       VerticalTextAlignment="Center" LineBreakMode="TailTruncation" />
+                <Label Grid.Column="2" Text="{Binding TrackCountDisplay}" FontSize="13"
+                       TextColor="Gray" VerticalTextAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- Row template for "Mixes well with..." -->
+        <DataTemplate x:Key="CompatibleRowTemplate" x:DataType="pages:CompatibleTrackRow">
+            <Grid ColumnDefinitions="4,*,60,50" Padding="0,0,16,0"
+                  BackgroundColor="{Binding AccentColor}">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnRelatedTrackTapped" />
+                </Grid.GestureRecognizers>
+                <BoxView Color="{Binding AccentBarColor}" WidthRequest="4"
+                         HorizontalOptions="Start" />
+                <VerticalStackLayout Grid.Column="1" Spacing="2" Padding="12,8">
+                    <Label Text="{Binding Track.Name}" FontSize="15"
+                           LineBreakMode="TailTruncation" />
+                    <Label Text="{Binding Track.Artist}" FontSize="12" TextColor="Gray"
+                           LineBreakMode="TailTruncation" />
+                    <Label Text="{Binding HintLabel}" FontSize="11" TextColor="Gray"
+                           LineBreakMode="TailTruncation"
+                           IsVisible="{Binding HasHint}" />
+                </VerticalStackLayout>
+                <Label Grid.Column="2" Text="{Binding Track.BpmDisplay}" FontSize="14"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+                <Label Grid.Column="3" Text="{Binding Track.KeyDisplay}" FontSize="14"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- Row template for "You may also like..." -->
+        <DataTemplate x:Key="CoOccurRowTemplate" x:DataType="pages:CoOccurTrackRow">
+            <Grid ColumnDefinitions="*,60,50" Padding="16,0,16,0">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnRelatedTrackTapped" />
+                </Grid.GestureRecognizers>
+                <VerticalStackLayout Spacing="2" Padding="0,8">
+                    <Label Text="{Binding Track.Name}" FontSize="15"
+                           LineBreakMode="TailTruncation" />
+                    <Label Text="{Binding Track.Artist}" FontSize="12" TextColor="Gray"
+                           LineBreakMode="TailTruncation" />
+                    <Label Text="{Binding SharedLabel}" FontSize="11" TextColor="Gray"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+                <Label Grid.Column="1" Text="{Binding Track.BpmDisplay}" FontSize="14"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+                <Label Grid.Column="2" Text="{Binding Track.KeyDisplay}" FontSize="14"
+                       HorizontalTextAlignment="End" VerticalTextAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Track metadata header -->
+        <VerticalStackLayout Grid.Row="0" Padding="16,16,16,8" Spacing="4"
+                             BackgroundColor="{AppThemeBinding Light=#F8F8F8, Dark=#252525}">
+            <Label x:Name="TitleLabel" FontSize="22" FontAttributes="Bold"
+                   LineBreakMode="WordWrap" />
+            <Label x:Name="ArtistLabel" FontSize="16" TextColor="Gray"
+                   LineBreakMode="WordWrap" />
+            <Label x:Name="AlbumLabel" FontSize="13" TextColor="Gray"
+                   LineBreakMode="TailTruncation" />
+
+            <!-- Stat chips: BPM / Key / Genre / Duration / Rating -->
+            <Grid x:Name="StatChips" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto"
+                  ColumnSpacing="8" Padding="0,8,0,0">
+                <Border Stroke="Gray" StrokeThickness="1" Padding="8,3"
+                        StrokeShape="RoundRectangle 12">
+                    <Label x:Name="BpmChipLabel" FontSize="12" />
+                </Border>
+                <Border Grid.Column="1" Stroke="Gray" StrokeThickness="1" Padding="8,3"
+                        StrokeShape="RoundRectangle 12">
+                    <Label x:Name="KeyChipLabel" FontSize="12" />
+                </Border>
+                <Border Grid.Column="2" Stroke="Gray" StrokeThickness="1" Padding="8,3"
+                        StrokeShape="RoundRectangle 12">
+                    <Label x:Name="GenreChipLabel" FontSize="12" />
+                </Border>
+                <Border Grid.Column="3" Stroke="Gray" StrokeThickness="1" Padding="8,3"
+                        StrokeShape="RoundRectangle 12">
+                    <Label x:Name="DurationChipLabel" FontSize="12" />
+                </Border>
+                <Border Grid.Column="4" Stroke="Gray" StrokeThickness="1" Padding="8,3"
+                        StrokeShape="RoundRectangle 12">
+                    <Label x:Name="RatingChipLabel" FontSize="12" />
+                </Border>
+            </Grid>
+
+            <!-- Secondary details -->
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" RowDefinitions="Auto,Auto"
+                  RowSpacing="2" Padding="0,8,0,0">
+                <Label Text="Added" FontSize="11" TextColor="Gray" />
+                <Label x:Name="DateAddedLabel" Grid.Column="1" FontSize="11" />
+                <Label Grid.Row="1" Text="Comments" FontSize="11" TextColor="Gray"
+                       IsVisible="{Binding Source={x:Reference CommentsLabel}, Path=IsVisible}" />
+                <Label x:Name="CommentsLabel" Grid.Row="1" Grid.Column="1" FontSize="11"
+                       LineBreakMode="TailTruncation" />
+            </Grid>
+        </VerticalStackLayout>
+
+        <!-- Segmented group picker -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="0" Padding="16,8,16,8">
+            <Button x:Name="AppearsOnButton" Grid.Column="0" Text="Appears on"
+                    FontSize="13" CornerRadius="0" Padding="0,0"
+                    Clicked="OnAppearsOnClicked" />
+            <Button x:Name="MixesWellButton" Grid.Column="1" Text="Mixes well"
+                    FontSize="13" CornerRadius="0" Padding="0,0"
+                    Clicked="OnMixesWellClicked" />
+            <Button x:Name="YouMayLikeButton" Grid.Column="2" Text="You may like"
+                    FontSize="13" CornerRadius="0" Padding="0,0"
+                    Clicked="OnYouMayLikeClicked" />
+        </Grid>
+
+        <!-- Content area: state container for Loading / Loaded / Empty -->
+        <Grid x:Name="ContentRoot" Grid.Row="2">
+            <mct:StateContainer.StateViews>
+
+                <Grid mct:StateView.StateKey="Loading"
+                      VerticalOptions="Center" HorizontalOptions="Center">
+                    <VerticalStackLayout Spacing="12" HorizontalOptions="Center">
+                        <ActivityIndicator IsRunning="True"
+                                           HorizontalOptions="Center" />
+                        <Label Text="Building graph..." FontSize="13" TextColor="Gray"
+                               HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                </Grid>
+
+                <Grid mct:StateView.StateKey="Empty"
+                      VerticalOptions="Center" HorizontalOptions="Center">
+                    <Label x:Name="EmptyLabel" FontSize="14" TextColor="Gray"
+                           HorizontalTextAlignment="Center" Padding="24,0" />
+                </Grid>
+
+            </mct:StateContainer.StateViews>
+
+            <!-- Default (Loaded) state -->
+            <CollectionView x:Name="ResultsList"
+                            ItemSizingStrategy="MeasureFirstItem" />
+        </Grid>
+
+    </Grid>
+
+</ContentPage>
