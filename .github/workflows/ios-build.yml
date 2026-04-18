@@ -69,6 +69,8 @@ jobs:
 
             - name: Upload to App Store Connect
               timeout-minutes: 15
+              env:
+                APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
               run: |
                 IPA_PATH=$(find . -name "*.ipa" -type f | head -n 1)
                 if [ -z "$IPA_PATH" ]; then
@@ -76,13 +78,19 @@ jobs:
                   exit 1
                 fi
 
-                echo "Uploading IPA to App Store Connect..."
+                # altool searches fixed dirs for AuthKey_{ID}.p8; write it there.
+                # Secret is stored as base64 to avoid PEM line-ending issues.
+                mkdir -p ~/.appstoreconnect/private_keys
+                API_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8"
+                echo "$APP_STORE_CONNECT_API_KEY_P8" | base64 --decode > "$API_KEY_PATH"
+                chmod 600 "$API_KEY_PATH"
 
+                echo "Uploading IPA to App Store Connect..."
                 xcrun altool --upload-app \
                   --type ios \
                   --file "$IPA_PATH" \
-                  --username "${{ secrets.APPLE_ID }}" \
-                  --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}"
+                  --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
+                  --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
 
                 echo "::notice::Upload to App Store Connect completed successfully"
 
@@ -99,5 +107,6 @@ jobs:
               if: always()
               run: |
                 rm -f cert.p12 profile.mobileprovision
+                rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8" || true
                 KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
                 security delete-keychain "$KEYCHAIN_PATH" || true
