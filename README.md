@@ -70,27 +70,33 @@ On startup the agent loads your rekordbox library (from `%MUSIC%/rekordbox/rekor
 | Command | Description |
 |---------|-------------|
 | `/help` | Show available commands |
+| `/tools` | List the AI tool surface |
 | `/load <path>` | Load a different rekordbox.xml (resets conversation) |
 | `/stats` | Show library statistics (genres, artists, keys, BPM range) |
+| `/workspaces` | List in-memory workspaces (named `TrackSet`s) for this session |
+| `/interactive [name]` | Offline workspace builder + graph picker — no LLM calls. Type `?` inside for subcommands (add, intersect, key, bpm, trim, order, pick, commit, …) |
+| `/export [path]` | Write the `DJ_BUDDY` folder back into rekordbox.xml (`.bak` saved when overwriting in place) |
 | `/clear` | Clear the screen |
 | `/exit` | Exit the agent |
 
-Type any question to chat with DJ Buddy — it remembers conversation context, so you can refer back to previous results ("tell me more about the first one", "find tracks that mix with those").
+Type any question to chat with DJ Buddy — it remembers conversation context, builds **workspaces** (in-memory subsets of the library) under named tags, and renders track lists directly to the console as Spectre tables via the `display_tracks` tool. You can refer back to previous results ("tighten that to 140–160 BPM", "order it as a 20-track set", "commit it as a playlist").
 
 ## Project Structure
 
 ```
-├── Agent/                         # Console-based AI assistant (GitHub Copilot SDK)
-│   ├── Program.cs                 # Entry point, REPL loop, Copilot session wiring
-│   ├── SystemPrompt.cs            # DJ Buddy agent persona and tool-use guidelines
-│   ├── ConsoleUi.cs               # Formatted output (banner, help, stats, prompts)
-│   ├── Spinner.cs                 # Async VT-powered thinking indicator
-│   ├── Vt.cs                      # Virtual Terminal escape sequence constants
+├── src/Agent/                     # Console-based AI assistant (GitHub Copilot SDK)
+│   ├── Program.cs                 # Entry point, REPL loop, Copilot session wiring, slash commands
+│   ├── SystemPrompt.cs            # DJ Buddy agent persona, ID-first tool guidelines, size clarification
+│   ├── ConsoleUi.cs               # Spectre output (banner, help, stats, RenderTrackTable)
+│   ├── WorkspaceStore.cs          # Per-session named TrackSets + DJ_BUDDY folder for export
+│   ├── InteractiveSession.cs      # Offline /interactive sub-REPL (build + pick phases, no LLM)
+│   ├── MarkdownRenderer.cs        # Streams agent markdown chunks to the console
 │   └── Tools/
-│       ├── LibraryTools.cs        # 5 query tools (search, details, playlists, stats)
-│       ├── PlaylistTools.cs       # Agent-owned playlist CRUD tools
-│       ├── GraphTools.cs          # 2 graph tools (suggest_next_track, find_similar_tracks)
-│       └── TrackSummary.cs        # Shared track-projection helper
+│       ├── LibraryTools.cs        # search / get_tracks / library_playlist_ids / list / stats / distribution
+│       ├── WorkspaceTools.cs      # CRUD + set ops + order_workspace (with targetCount) + trim_workspace + commit
+│       ├── DisplayTools.cs        # display_tracks — renders Spectre tables to the user's console
+│       ├── GraphTools.cs          # suggest_next_track / suggest_next_in_workspace / find_similar_tracks
+│       └── TrackFieldProjector.cs # Shared field projection (canonical names, Normalize, Project, FormatForDisplay)
 ├── Rekordbox/                     # Shared .NET library (net10.0, no MAUI dependency)
 │   ├── Models/
 │   │   ├── Track.cs               # Full-fidelity track model (~25 attributes + cues + beatgrid)

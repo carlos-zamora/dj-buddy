@@ -29,13 +29,11 @@ internal static class Program
         {
             if (args.Length > 0)
             {
-                // Explicit CLI arg was wrong — exit immediately.
                 ConsoleUi.PrintError($"rekordbox.xml not found: {xmlPath}");
                 ConsoleUi.PrintError("Usage: Agent [path-to-rekordbox.xml]");
                 return 1;
             }
 
-            // Default path missing — prompt interactively.
             ConsoleUi.PrintStatus($"No library found at default location ({xmlPath}).");
             ConsoleUi.PrintStatus("Enter the path to your rekordbox.xml (or 'exit' to quit):");
 
@@ -64,9 +62,6 @@ internal static class Program
         ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
 
         // ── Build graph in background ───────────────────────────────────────────────
-        // Graph construction is CPU-bound and can take a moment on large libraries. Kick it
-        // off immediately so it overlaps with the Copilot connection; graph tools await the
-        // resulting task before traversing it.
         var graphTask = Task.Run(() => TrackGraphBuilder.Build(library));
 
         // ── Connect to GitHub Copilot ───────────────────────────────────────────────
@@ -77,31 +72,34 @@ internal static class Program
 
         // ── Create session ──────────────────────────────────────────────────────────
 
-        var store = new AgentPlaylistStore();
-        var session = CreateSession(client, library, graphTask, playlistCount, store);
+        var store = new WorkspaceStore(library);
+        var session = CreateSession(client, store, graphTask, playlistCount);
 
         // ── REPL ────────────────────────────────────────────────────────────────────
 
         ConsoleUi.PrintWelcome();
 
-        // Per-request state shared with the event handler registered below.
-        // Reset at the start of each SendAndWaitAsync call.
         CancellationTokenSource? loopCts = null;
         bool loopStreamingStarted = false;
         TaskCompletionSource? loopSpinnerCleared = null;
         const string spinnerSuffix = " Thinking...";
-        const int spinnerLineLen = 15; // "  X Thinking..." — 2 indent + 1 frame char + 12 suffix chars
 
-        // Register the event handler exactly once per session object.
-        // Calling session.On() multiple times adds multiple handlers — registering
-        // inside the REPL loop caused one extra handler per message (hence duplication).
         void RegisterSessionHandler(CopilotSession s) => s.On(ev =>
         {
             if (ev is ToolExecutionStartEvent toolStart)
             {
-                // Clear the spinner line before printing the tool call;
-                // the spinner will redraw on the new current line on its next tick.
-                Console.Write($"\r{new string(' ', spinnerLineLen)}\r");
+                if (loopStreamingStarted)
+                {
+                    // Cursor is mid-line in streaming text — move to a fresh line first.
+                    Console.WriteLine();
+                }
+                else
+                {
+                    // Spinner may still be running — stop it and wait for its clear.
+                    loopCts?.Cancel();
+                    loopSpinnerCleared?.Task.Wait();
+                }
+                Console.Write("\x1b[2K\r");
                 var toolName = toolStart.Data.ToolName;
                 var argStr = FormatToolArgs(toolStart.Data.Arguments);
                 AnsiConsole.MarkupLine(argStr.Length > 0
@@ -114,8 +112,8 @@ internal static class Program
                 {
                     loopStreamingStarted = true;
                     loopCts?.Cancel();
-                    loopSpinnerCleared?.Task.Wait(); // blocks until spinner clears its line
-                    Console.WriteLine();             // fresh line before response text
+                    loopSpinnerCleared?.Task.Wait();
+                    Console.WriteLine();
                 }
                 Console.Write(_mdRenderer.Process(delta.Data.DeltaContent));
             }
@@ -132,11 +130,9 @@ internal static class Program
                 break;
 
             var trimmed = input.Trim();
-
             if (trimmed.Length == 0)
                 continue;
 
-            // Exit commands
             if (string.Equals(trimmed, "exit", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(trimmed, "/exit", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(trimmed, "/quit", StringComparison.OrdinalIgnoreCase))
@@ -144,7 +140,6 @@ internal static class Program
                 break;
             }
 
-            // Slash commands
             if (trimmed.StartsWith('/'))
             {
                 var parts = trimmed.Split(' ', 2);
@@ -168,6 +163,29 @@ internal static class Program
                         ConsoleUi.PrintStats(library);
                         continue;
 
+                    case "/workspaces":
+                        ConsoleUi.PrintWorkspaces(store);
+                        continue;
+
+                    case "/interactive":
+                    {
+                        // Optional single positional arg: workspace name. No name → scratch workspace.
+                        var wsName = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1])
+                            ? parts[1].Trim()
+                            : null;
+
+                        try
+                        {
+                            await InteractiveSession.RunAsync(store, graphTask, wsName);
+                        }
+                        catch (Exception ex)
+                        {
+                            ConsoleUi.PrintError($"Interactive session failed: {ex.Message}");
+                        }
+
+                        continue;
+                    }
+
                     case "/load":
                         if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[1]))
                         {
@@ -186,11 +204,11 @@ internal static class Program
                         {
                             (library, playlistCount) = await LoadLibraryAsync(newPath);
                             xmlPath = newPath;
-                            store = new AgentPlaylistStore();
+                            store = new WorkspaceStore(library);
                             graphTask = Task.Run(() => TrackGraphBuilder.Build(library));
-                            session = CreateSession(client, library, graphTask, playlistCount, store);
-                            RegisterSessionHandler(session); // new session object — register once
-                            _mdRenderer.Flush(); // Reset renderer state for new conversation.
+                            session = CreateSession(client, store, graphTask, playlistCount);
+                            RegisterSessionHandler(session);
+                            _mdRenderer.Flush();
                             ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
                             ConsoleUi.PrintStatus("Library reloaded. Conversation history has been reset.");
                             Console.WriteLine();
@@ -206,7 +224,7 @@ internal static class Program
                     {
                         if (!store.HasAnyTracks)
                         {
-                            ConsoleUi.PrintError("No tracks in agent playlists to export. Ask DJ Buddy to build a playlist first.");
+                            ConsoleUi.PrintError("No committed playlists to export. Ask DJ Buddy to build a workspace and commit it first.");
                             continue;
                         }
 
@@ -232,7 +250,6 @@ internal static class Program
                 }
             }
 
-            // Send to Copilot with a cancellable background spinner
             try
             {
                 using var cts = new CancellationTokenSource();
@@ -252,13 +269,12 @@ internal static class Program
                         try { await Task.Delay(80, cts.Token); }
                         catch (OperationCanceledException) { break; }
                     }
-                    Console.Write($"\r{new string(' ', spinnerLineLen)}\r");
+                    Console.Write("\x1b[2K\r");
                     spinnerCleared.SetResult();
                 });
 
                 await session.SendAndWaitAsync(new MessageOptions { Prompt = trimmed });
 
-                // Cancel spinner in case no deltas arrived (e.g. empty response).
                 cts.Cancel();
                 await spinnerBg;
                 Console.Write(_mdRenderer.Flush());
@@ -286,76 +302,160 @@ internal static class Program
         return (lib, plCount);
     }
 
+    /// <summary>
+    /// Registers the full DJ Buddy tool surface with the Copilot SDK. Tools close over the
+    /// workspace store and the shared graph task; every return is ID-first to keep the session
+    /// transcript compact.
+    /// </summary>
     private static CopilotSession CreateSession(
         CopilotClient copilotClient,
-        RekordboxLibrary lib,
+        WorkspaceStore store,
         Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
-        int plCount,
-        AgentPlaylistStore store)
+        int plCount)
     {
+        var lib = store.Library;
+
         var tools = new List<AIFunction>
         {
+            // ── Library search / projection ─────────────────────────────────────────
+
             AIFunctionFactory.Create(
                 (string query, string? genre, string? key, string? minBpm, string? maxBpm, string? sortBy, string? limit) =>
-                    LibraryTools.SearchTracks(lib, query, genre, key, minBpm, maxBpm, sortBy, limit),
-                "search_tracks",
-                "Search tracks by name/artist with optional filters for genre, BPM range, and musical key (Camelot notation like '8A'). Returns up to `limit` results (default 20). Omit optional parameters you don't need — do not pass empty strings or nulls."),
+                    LibraryTools.Search(lib, query, genre, key, minBpm, maxBpm, sortBy, limit),
+                "search",
+                "Search the library and return matching TrackIDs (IDs only). Follow up with get_tracks to see field values. Omit optional parameters you don't need — don't pass empty strings or 'null'. limit default 50, max 500."),
 
             AIFunctionFactory.Create(
-                (string trackId) =>
-                    LibraryTools.GetTrackDetails(lib, trackId),
-                "get_track_details",
-                "Get full metadata for a specific track by its track ID."),
+                (string[] trackIds, string[] fields) =>
+                    LibraryTools.GetTracks(lib, trackIds, fields),
+                "get_tracks",
+                "Project chosen fields for a set of TrackIDs. Supported fields: name, artist, album, genre, bpm, key, tonality, rating, playCount, totalTime, dateAdded, label, remixer, year, kind, bitRate, comments. Pick only the fields you'll display."),
 
             AIFunctionFactory.Create(
-                () => LibraryTools.ListPlaylists(lib),
-                "list_playlists",
-                "List all playlists in the library with their track counts."),
+                (string playlistName) => LibraryTools.LibraryPlaylistIds(lib, playlistName),
+                "library_playlist_ids",
+                "Returns TrackIDs for a named library playlist. Use get_tracks afterward to see details."),
 
             AIFunctionFactory.Create(
-                (string playlistName) =>
-                    LibraryTools.GetPlaylistTracks(lib, playlistName),
-                "get_playlist_tracks",
-                "Get all tracks in a specific playlist by name."),
+                () => LibraryTools.ListLibraryPlaylists(lib),
+                "list_library_playlists",
+                "List all library playlists with name and count (no tracks)."),
 
             AIFunctionFactory.Create(
-                () => LibraryTools.GetLibraryStats(lib),
-                "get_library_stats",
-                "Get summary statistics about the library: total tracks, artist/key distribution, BPM range."),
+                () => LibraryTools.LibraryStats(lib),
+                "library_stats",
+                "Summary scalars about the library: track count, playlist count, BPM range, distinct artist/genre/key counts."),
 
             AIFunctionFactory.Create(
-                (string name) => PlaylistTools.CreatePlaylist(store, name),
-                "create_playlist",
-                "Create a new named playlist in the agent's DJ_BUDDY folder. The playlist name must be unique and non-empty."),
+                (string dimension, string? top) => LibraryTools.LibraryDistribution(lib, dimension, top),
+                "library_distribution",
+                "Top-N distribution for one of: artist, genre, key. Use when the user asks for breakdowns. top default 10."),
+
+            // ── Workspace CRUD and set operations ───────────────────────────────────
 
             AIFunctionFactory.Create(
-                (string playlistName, string trackId) =>
-                    PlaylistTools.AddTrackToPlaylist(store, lib, playlistName, trackId),
-                "add_track_to_playlist",
-                "Add a track to a named agent playlist by its track ID. Use search_tracks or get_track_details first to find a valid track ID."),
+                (string name) => WorkspaceTools.CreateWorkspace(store, name),
+                "create_workspace",
+                "Create a new empty named workspace (a TrackSet in app memory). Returns name, count, ordered."),
 
             AIFunctionFactory.Create(
-                (string playlistName, string trackId) =>
-                    PlaylistTools.RemoveTrackFromPlaylist(store, playlistName, trackId),
-                "remove_track_from_playlist",
-                "Remove a track from a named agent playlist."),
+                (string name) => WorkspaceTools.DeleteWorkspace(store, name),
+                "delete_workspace",
+                "Delete a workspace by name."),
 
             AIFunctionFactory.Create(
-                () => PlaylistTools.ListAgentPlaylists(store, lib),
-                "list_agent_playlists",
-                "List all agent-created playlists with their track counts and full track details."),
+                (string oldName, string newName) => WorkspaceTools.RenameWorkspace(store, oldName, newName),
+                "rename_workspace",
+                "Rename a workspace."),
+
+            AIFunctionFactory.Create(
+                () => WorkspaceTools.ListWorkspaces(store),
+                "list_workspaces",
+                "List all workspaces with name, count, and ordered flag."),
+
+            AIFunctionFactory.Create(
+                (string name, string? topArtists, string? topKeys) =>
+                    WorkspaceTools.DescribeWorkspace(store, name, topArtists, topKeys),
+                "describe_workspace",
+                "Workspace aggregates: count, ordered flag, BPM range, optional top-N artists/keys. Pass topArtists / topKeys as small integers to include breakdowns."),
+
+            AIFunctionFactory.Create(
+                (string name, string? offset, string? limit) =>
+                    WorkspaceTools.WorkspaceIds(store, name, offset, limit),
+                "workspace_ids",
+                "Paged TrackIDs from a workspace. Use get_tracks after to see details. limit default 200."),
+
+            AIFunctionFactory.Create(
+                (string name, string mode, string query, string? playlistFilter, string? key, string? minBpm, string? maxBpm, string? limit) =>
+                    WorkspaceTools.WorkspaceFromSearch(store, name, mode, query, playlistFilter, key, minBpm, maxBpm, limit),
+                "workspace_from_search",
+                "Run a library search and fold results into a workspace. mode: replace | union | intersect | except. Optional playlistFilter scopes by playlist name (substring, case-insensitive) — use as a quasi-genre when the rekordbox Genre tag is unreliable. Creates the workspace if missing."),
+
+            AIFunctionFactory.Create(
+                (string name, string mode, string[] trackIds) =>
+                    WorkspaceTools.WorkspaceFromIds(store, name, mode, trackIds),
+                "workspace_from_ids",
+                "Fold an explicit list of TrackIDs into a workspace. mode: replace | union | intersect | except."),
+
+            AIFunctionFactory.Create(
+                (string name, string mode, string playlistName) =>
+                    WorkspaceTools.WorkspaceFromLibraryPlaylist(store, name, mode, playlistName),
+                "workspace_from_library_playlist",
+                "Fold a named library playlist's TrackIDs into a workspace. mode: replace | union | intersect | except."),
+
+            AIFunctionFactory.Create(
+                (string target, string op, string source) =>
+                    WorkspaceTools.WorkspaceOp(store, target, op, source),
+                "workspace_op",
+                "Combine two workspaces: target = target <op> source. op: union | intersect | except | replace."),
+
+            // ── Ordering + export ───────────────────────────────────────────────────
+
+            AIFunctionFactory.Create(
+                (string name, string? seedTrackId, string? targetCount) =>
+                    WorkspaceTools.OrderWorkspace(store, graphTask, name, seedTrackId, targetCount),
+                "order_workspace",
+                "Turn a workspace into an ordered DJ set using the compatibility graph. Picks strategy by size (exact for tiny, heuristic for larger). Optional targetCount caps the output (workspace shrinks in place to N tracks) — pass when the user asked for an explicit size, omit for 'all of X' requests. Returns the ordered TrackIDs and the strategy used."),
+
+            AIFunctionFactory.Create(
+                (string name, string count, string? by) =>
+                    WorkspaceTools.TrimWorkspace(store, name, count, by),
+                "trim_workspace",
+                "Shrink a workspace to its top N tracks ranked by 'by': rating (default), recent (DateAdded desc), playCount, or random. Use as a pre-ordering cull when the user wants the 'best N' rather than a BPM-prefix slice."),
+
+            AIFunctionFactory.Create(
+                (string workspaceName, string? playlistName) =>
+                    WorkspaceTools.CommitWorkspaceAsPlaylist(store, workspaceName, playlistName),
+                "commit_workspace_as_playlist",
+                "Commit a workspace into the DJ_BUDDY folder as a playlist. Tell the user to run /export after to write rekordbox.xml."),
+
+            // ── Display ─────────────────────────────────────────────────────────────
+
+            AIFunctionFactory.Create(
+                (string[] trackIds, string[]? fields, string? title) =>
+                    DisplayTools.DisplayTracks(lib, trackIds, fields, title),
+                "display_tracks",
+                "Render a list of TrackIDs as a Spectre table directly to the user's console. THIS is what the user sees — call it instead of pasting tracks into your reply. Default columns: artist, name, bpm, key. Pass fields=[\"artist\",\"name\",\"bpm\",\"key\",\"rating\"] to add columns. Pass a short title to caption the table. Returns { ok, displayed, missingIds } only — the rendered data is NOT echoed back."),
+
+            // ── Graph traversal ─────────────────────────────────────────────────────
 
             AIFunctionFactory.Create(
                 (string trackId, string? key, string? genre, string? minBpm, string? maxBpm, string? limit) =>
                     GraphTools.SuggestNextTrack(lib, graphTask, trackId, key, genre, minBpm, maxBpm, limit),
                 "suggest_next_track",
-                "Given a current track ID, return compatible next-track candidates sorted by transition quality (harmonic key + BPM proximity). Each result includes the harmonic relation (Same/Adjacent/EnergyBoost/EnergyDrop), BPM delta percent, and whether it's a half/double-time match. Optional filters: key (Camelot like '8A'), genre, minBpm, maxBpm, limit (default 10)."),
+                "Given a TrackID, return compatible next-track candidates (IDs + edge metadata only) sorted by transition quality. Use against the whole library."),
+
+            AIFunctionFactory.Create(
+                (string workspaceName, string trackId, string? limit) =>
+                    GraphTools.SuggestNextInWorkspace(store, graphTask, workspaceName, trackId, limit),
+                "suggest_next_in_workspace",
+                "Next-track candidates restricted to a named workspace. Use when helping the user build a set from a curated subset."),
 
             AIFunctionFactory.Create(
                 (string trackId, string? limit) =>
                     GraphTools.FindSimilarTracks(lib, graphTask, trackId, limit),
                 "find_similar_tracks",
-                "Given a track ID, return tracks that are both harmonically compatible AND/OR frequently co-occur in playlists. Each result includes both compatibility and co-occurrence evidence where available, plus a combined similarity score. Optional limit (default 10)."),
+                "Tracks similar to a source by harmonic compatibility and/or playlist co-occurrence. Returns IDs plus evidence components."),
         };
 
         var sess = copilotClient.CreateSessionAsync(new SessionConfig
@@ -375,12 +475,12 @@ internal static class Program
     }
 
     /// <summary>
-    /// Patches the source rekordbox.xml with the agent's DJ_BUDDY folder and writes
-    /// the result to <paramref name="outputPath"/>. Creates a <c>.bak</c> backup first
-    /// when overwriting the source file in-place.
+    /// Patches the source rekordbox.xml with the agent's DJ_BUDDY folder and writes the result
+    /// to <paramref name="outputPath"/>. Creates a <c>.bak</c> backup first when overwriting
+    /// the source file in-place.
     /// </summary>
     private static async Task HandleExportAsync(
-        AgentPlaylistStore store, string sourceXmlPath, string outputPath)
+        WorkspaceStore store, string sourceXmlPath, string outputPath)
     {
         if (string.Equals(sourceXmlPath, outputPath, StringComparison.OrdinalIgnoreCase))
         {
@@ -405,7 +505,6 @@ internal static class Program
 
     /// <summary>
     /// Formats tool arguments as a compact "key: value, ..." string for debug display.
-    /// Handles Dictionary, IDictionary, and falls back to JSON serialization.
     /// </summary>
     private static string FormatToolArgs(object? arguments)
     {
@@ -416,7 +515,7 @@ internal static class Program
         {
             return string.Join(", ", dict
                 .Where(kv => kv.Value is not null)
-                .Select(kv => $"{kv.Key}: {kv.Value}"));
+                .Select(kv => $"{kv.Key}: {FormatArgValue(kv.Value!)}"));
         }
 
         if (arguments is System.Collections.IDictionary legacyDict)
@@ -425,14 +524,30 @@ internal static class Program
             foreach (System.Collections.DictionaryEntry entry in legacyDict)
             {
                 if (entry.Value is not null)
-                    pairs.Add($"{entry.Key}: {entry.Value}");
+                    pairs.Add($"{entry.Key}: {FormatArgValue(entry.Value)}");
             }
 
             return string.Join(", ", pairs);
         }
 
-        // Fallback: serialize to JSON and strip the outer braces.
         var json = System.Text.Json.JsonSerializer.Serialize(arguments);
         return json.Trim('{', '}').Trim();
+    }
+
+    /// <summary>
+    /// Renders an argument value compactly. Large arrays (e.g. trackIds) are truncated to
+    /// length only so the debug line stays readable.
+    /// </summary>
+    private static string FormatArgValue(object value)
+    {
+        if (value is string s) return s;
+        if (value is System.Collections.IEnumerable enumerable and not string)
+        {
+            var items = enumerable.Cast<object?>().ToList();
+            if (items.Count > 5)
+                return $"[{items.Count} items]";
+            return "[" + string.Join(",", items.Select(i => i?.ToString() ?? "")) + "]";
+        }
+        return value.ToString() ?? "";
     }
 }
