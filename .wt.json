@@ -1,0 +1,45 @@
+{
+  "$version": "1.0.0",
+  "snippets": [
+    {
+      "input": "dotnet build -f net10.0-windows10.0.19041.0\\r",
+      "name": "Build (Windows)",
+      "description": "Build the app for Windows"
+    },
+    {
+      "input": "dotnet run -f net10.0-windows10.0.19041.0\\r",
+      "name": "Run (Windows)",
+      "description": "Run the app on Windows"
+    },
+    {
+      "input": "dotnet build -f net10.0-android\\r",
+      "name": "Build (Android)",
+      "description": "Build the app for Android"
+    },
+    {
+      "input": "dotnet clean\\r",
+      "name": "Clean",
+      "description": "Clean build artifacts for the project"
+    },
+    {
+      "input": "docker build -f src/Agent/Dockerfile -t dj-buddy-agent .\\r",
+      "name": "Docker: Build agent",
+      "description": "Build the DJ Buddy agent container image"
+    },
+    {
+      "input": "docker run --rm -it -v \"$env:USERPROFILE/Music/rekordbox/rekordbox.xml:/data/rekordbox.xml:ro\" -e GITHUB_TOKEN=\"$env:GITHUB_TOKEN\" dj-buddy-agent /data/rekordbox.xml\\r",
+      "name": "Docker: Run agent",
+      "description": "Run the agent container (mounts default rekordbox.xml, uses GITHUB_TOKEN from env)"
+    },
+    {
+      "input": "docker build -f docker/Dockerfile.test -t dj-buddy-test .\\r",
+      "name": "Docker: Build tests",
+      "description": "Build the test runner container image"
+    },
+    {
+      "input": "docker run --rm dj-buddy-test\\r",
+      "name": "Docker: Run tests",
+      "description": "Run Rekordbox.Tests inside the test container"
+    }
+  ]
+}
