@@ -1,0 +1,36 @@
+# .dockerignore — like .gitignore, but controls what is sent to the Docker build
+# engine as the "build context". Keeping the context small means faster builds
+# because Docker has to hash and transfer every included file before it starts.
+
+# Compiled output — never copy these; the Dockerfile builds fresh inside the container
+**/bin/
+**/obj/
+
+# IDE and OS metadata
+.vs/
+.vscode/
+.idea/
+**/.DS_Store
+*.user
+*.suo
+
+# Git history (no value inside the image, can be several MB)
+.git/
+.gitignore
+
+# MAUI app — not needed to build the Agent container
+src/MAUI/
+
+# Test project — not needed in the runtime image
+src/Rekordbox.Tests/
+
+# Local secrets and certs — never ship these into an image
+certs/
+**/*.pfx
+**/*.p12
+
+# Planning / documentation artifacts
+plan.md
+graph-applications.txt
+rekordbox.xml
+AGENTS.md

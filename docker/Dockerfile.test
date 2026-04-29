@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# Test runner image for Rekordbox.Tests.
+# Baking the source into the image (rather than mounting it) means the image is
+# fully self-contained — anyone can reproduce a CI failure with just:
+#   docker build -f docker/Dockerfile.test -t dj-buddy-test .
+#   docker run --rm dj-buddy-test
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+WORKDIR /src
+
+# Copy project files first so the restore layer is cached independently of source.
+# As long as no .csproj changes, `dotnet restore` is skipped on rebuild.
+COPY global.json .
+COPY src/Rekordbox.Tests/Rekordbox.Tests.csproj     src/Rekordbox.Tests/
+COPY src/Rekordbox/Rekordbox.csproj                  src/Rekordbox/
+COPY src/Rekordbox.Graph/Rekordbox.Graph.csproj      src/Rekordbox.Graph/
+
+RUN dotnet restore src/Rekordbox.Tests/Rekordbox.Tests.csproj
+
+# Copy the rest of the source. Changes here only invalidate layers from this
+# point forward — the expensive restore layer above is still reused.
+COPY src/ src/
+
+CMD ["dotnet", "test", "src/Rekordbox.Tests/Rekordbox.Tests.csproj", \
+     "--no-restore", "--logger", "console;verbosity=normal"]

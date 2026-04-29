@@ -45,6 +45,23 @@ dotnet build Rekordbox/Rekordbox.csproj
 dotnet test Rekordbox.Tests/Rekordbox.Tests.csproj
 ```
 
+### Docker
+
+```bash
+# Build the agent image (run from repo root)
+docker build -f src/Agent/Dockerfile -t dj-buddy-agent .
+
+# Run the agent (mounts your rekordbox.xml as a read-only volume)
+docker run --rm -it \
+  -v "$HOME/Music/rekordbox/rekordbox.xml:/data/rekordbox.xml:ro" \
+  -e GITHUB_TOKEN="$GITHUB_TOKEN" \
+  dj-buddy-agent /data/rekordbox.xml
+
+# Build and run the test suite inside a container
+docker build -f docker/Dockerfile.test -t dj-buddy-test .
+docker run --rm dj-buddy-test
+```
+
 ## Usage
 
 1. Launch the app

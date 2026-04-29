@@ -1,0 +1,29 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build the test image from our own Dockerfile.
+      # Docker layer caching means repeated builds reuse the restore layer as
+      # long as no .csproj files changed — same benefit as actions/cache but
+      # handled entirely by Docker rather than a separate cache step.
+      #
+      # To reproduce a CI failure locally:
+      #   docker build -f docker/Dockerfile.test -t dj-buddy-test .
+      #   docker run --rm dj-buddy-test
+      - name: Build test image
+        run: docker build -f docker/Dockerfile.test -t dj-buddy-test .
+
+      - name: Run tests
+        run: docker run --rm dj-buddy-test
