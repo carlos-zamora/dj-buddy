@@ -64,16 +64,10 @@ internal static class Program
         // ── Build graph in background ───────────────────────────────────────────────
         var graphTask = Task.Run(() => TrackGraphBuilder.Build(library));
 
-        // ── Connect to GitHub Copilot ───────────────────────────────────────────────
-
-        ConsoleUi.PrintStatus("Connecting to GitHub Copilot...");
-        var client = new CopilotClient();
-        await client.StartAsync();
-
-        // ── Create session ──────────────────────────────────────────────────────────
+        // ── Start Copilot session in background (non-blocking) ──────────────────────
 
         var store = new WorkspaceStore(library);
-        var session = CreateSession(client, store, graphTask, playlistCount);
+        var sessionTask = TryCreateSessionAsync(store, graphTask, playlistCount);
 
         // ── REPL ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +76,7 @@ internal static class Program
         CancellationTokenSource? loopCts = null;
         bool loopStreamingStarted = false;
         TaskCompletionSource? loopSpinnerCleared = null;
+        CopilotSession? handledSession = null;
         const string spinnerSuffix = " Thinking...";
 
         void RegisterSessionHandler(CopilotSession s) => s.On(ev =>
@@ -118,8 +113,6 @@ internal static class Program
                 Console.Write(_mdRenderer.Process(delta.Data.DeltaContent));
             }
         });
-
-        RegisterSessionHandler(session);
 
         while (true)
         {
@@ -206,8 +199,8 @@ internal static class Program
                             xmlPath = newPath;
                             store = new WorkspaceStore(library);
                             graphTask = Task.Run(() => TrackGraphBuilder.Build(library));
-                            session = CreateSession(client, store, graphTask, playlistCount);
-                            RegisterSessionHandler(session);
+                            sessionTask = TryCreateSessionAsync(store, graphTask, playlistCount);
+                            handledSession = null;
                             _mdRenderer.Flush();
                             ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
                             ConsoleUi.PrintStatus("Library reloaded. Conversation history has been reset.");
@@ -244,6 +237,56 @@ internal static class Program
                         continue;
                     }
 
+                    case "/reconnect":
+                        ConsoleUi.PrintStatus("Reconnecting to GitHub Copilot...");
+                        sessionTask = TryCreateSessionAsync(store, graphTask, playlistCount);
+                        handledSession = null;
+                        continue;
+
+                    case "/search":
+                    {
+                        if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[1]))
+                        {
+                            ConsoleUi.PrintError("Usage: /search <query>");
+                            continue;
+                        }
+
+                        var q = parts[1].Trim();
+                        var hits = library.Tracks.Values
+                            .Search(q, TrackSearchFields.All)
+                            .OrderBy(TrackSortKey.Title)
+                            .Take(50)
+                            .ToList();
+                        ConsoleUi.RenderTrackTable(hits, ["artist", "name", "bpm", "key"], $"Search: {q}");
+                        continue;
+                    }
+
+                    case "/suggest":
+                    {
+                        if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[1]))
+                        {
+                            ConsoleUi.PrintError("Usage: /suggest <trackId>");
+                            continue;
+                        }
+
+                        try { await HandleSuggestAsync(library, graphTask, parts[1].Trim()); }
+                        catch (Exception ex) { ConsoleUi.PrintError($"Error: {ex.Message}"); }
+                        continue;
+                    }
+
+                    case "/similar":
+                    {
+                        if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[1]))
+                        {
+                            ConsoleUi.PrintError("Usage: /similar <trackId>");
+                            continue;
+                        }
+
+                        try { await HandleSimilarAsync(library, graphTask, parts[1].Trim()); }
+                        catch (Exception ex) { ConsoleUi.PrintError($"Error: {ex.Message}"); }
+                        continue;
+                    }
+
                     default:
                         ConsoleUi.PrintError($"Unknown command: {cmd}. Type /help for available commands.");
                         continue;
@@ -252,6 +295,21 @@ internal static class Program
 
             try
             {
+                var currentSession = await sessionTask;
+                if (currentSession is null)
+                {
+                    AnsiConsole.MarkupLine("[yellow]⚠ AI offline[/] [dim]— could not connect to GitHub Copilot.[/]");
+                    AnsiConsole.MarkupLine("[dim]  Use /reconnect to retry, or /search, /suggest, /interactive to work offline.[/]");
+                    Console.WriteLine();
+                    continue;
+                }
+
+                if (!ReferenceEquals(currentSession, handledSession))
+                {
+                    RegisterSessionHandler(currentSession);
+                    handledSession = currentSession;
+                }
+
                 using var cts = new CancellationTokenSource();
                 var spinnerFrames = new[] { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' };
 
@@ -273,7 +331,7 @@ internal static class Program
                     spinnerCleared.SetResult();
                 });
 
-                await session.SendAndWaitAsync(new MessageOptions { Prompt = trimmed });
+                await currentSession.SendAndWaitAsync(new MessageOptions { Prompt = trimmed });
 
                 cts.Cancel();
                 await spinnerBg;
@@ -303,11 +361,179 @@ internal static class Program
     }
 
     /// <summary>
+    /// Attempts to connect to GitHub Copilot and create a session. Returns <c>null</c> if the
+    /// connection fails for any reason (no network, auth error, timeout) so the caller can
+    /// continue in offline mode.
+    /// </summary>
+    private static async Task<CopilotSession?> TryCreateSessionAsync(
+        WorkspaceStore store,
+        Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
+        int plCount)
+    {
+        try
+        {
+            var client = new CopilotClient();
+            await client.StartAsync();
+            return await CreateSessionCoreAsync(client, store, graphTask, plCount);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Renders the top compatible next-track suggestions for a given source track ID.
+    /// </summary>
+    private static async Task HandleSuggestAsync(
+        RekordboxLibrary library,
+        Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
+        string trackId)
+    {
+        if (!library.Tracks.TryGetValue(trackId, out var source))
+        {
+            ConsoleUi.PrintError($"Track not found: {trackId}");
+            return;
+        }
+
+        var graph = await graphTask.ConfigureAwait(false);
+        if (!graph.TryGetOutEdges(source, out var outEdges))
+        {
+            ConsoleUi.PrintStatus($"No compatible tracks found for {trackId}.");
+            return;
+        }
+
+        var suggestions = outEdges.OfType<CompatibilityEdge>().OrderBy(e => e.Weight).Take(10).ToList();
+        if (suggestions.Count == 0)
+        {
+            ConsoleUi.PrintStatus($"No compatible tracks found for {trackId}.");
+            return;
+        }
+
+        var title = $"Suggestions after: {source.Artist} — {source.Name}";
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine($"  [bold]{Markup.Escape(title)}[/]  [dim]({suggestions.Count} tracks)[/]");
+        AnsiConsole.WriteLine();
+
+        var table = new Table { Border = TableBorder.None, ShowHeaders = true };
+        table.AddColumn(new TableColumn("[dim]#[/]") { Width = 4, NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]Artist[/]"));
+        table.AddColumn(new TableColumn("[dim]Title[/]"));
+        table.AddColumn(new TableColumn("[dim]BPM[/]") { Alignment = Justify.Right, NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]Key[/]") { NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]Relation[/]") { NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]BPM Δ%[/]") { Alignment = Justify.Right, NoWrap = true });
+
+        for (var i = 0; i < suggestions.Count; i++)
+        {
+            var e = suggestions[i];
+            var t = e.Target;
+            table.AddRow(
+                $"[dim]{i + 1,3}[/]",
+                Markup.Escape(t.Artist),
+                Markup.Escape(t.Name),
+                $"[yellow]{t.Bpm:F1}[/]",
+                $"[yellow]{Markup.Escape(t.Key)}[/]",
+                $"[dim]{Markup.Escape(e.Relation.ToString())}[/]",
+                $"[dim]{e.BpmDeltaPercent:F1}[/]");
+        }
+
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+    }
+
+    /// <summary>
+    /// Renders similar tracks (harmonic compat + playlist co-occurrence) for a given source track ID.
+    /// </summary>
+    private static async Task HandleSimilarAsync(
+        RekordboxLibrary library,
+        Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
+        string trackId)
+    {
+        if (!library.Tracks.TryGetValue(trackId, out var source))
+        {
+            ConsoleUi.PrintError($"Track not found: {trackId}");
+            return;
+        }
+
+        var graph = await graphTask.ConfigureAwait(false);
+        if (!graph.TryGetOutEdges(source, out var outEdges))
+        {
+            ConsoleUi.PrintStatus($"No similar tracks found for {trackId}.");
+            return;
+        }
+
+        // Group by target ID, keeping best compat edge + any co-occur edge.
+        var grouped = new Dictionary<string, (CompatibilityEdge? Compat, CoOccurrenceEdge? CoOccur)>();
+        foreach (var edge in outEdges)
+        {
+            var id = edge.Target.TrackId;
+            grouped.TryGetValue(id, out var slot);
+            if (edge is CompatibilityEdge ce)
+            {
+                if (slot.Compat is null || ce.Weight < slot.Compat.Weight)
+                    slot.Compat = ce;
+            }
+            else if (edge is CoOccurrenceEdge coe)
+            {
+                slot.CoOccur = coe;
+            }
+            grouped[id] = slot;
+        }
+
+        var results = grouped
+            .Select(kv => (
+                Track: kv.Value.Compat?.Target ?? kv.Value.CoOccur!.Target,
+                CompatWeight: kv.Value.Compat?.Weight,
+                CoOccurCount: kv.Value.CoOccur?.PlaylistCount,
+                Score: (kv.Value.Compat?.Weight ?? 0) + (kv.Value.CoOccur?.Weight ?? 0)))
+            .OrderBy(x => x.Score)
+            .Take(10)
+            .ToList();
+
+        if (results.Count == 0)
+        {
+            ConsoleUi.PrintStatus($"No similar tracks found for {trackId}.");
+            return;
+        }
+
+        var title = $"Similar to: {source.Artist} — {source.Name}";
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine($"  [bold]{Markup.Escape(title)}[/]  [dim]({results.Count} tracks)[/]");
+        AnsiConsole.WriteLine();
+
+        var table = new Table { Border = TableBorder.None, ShowHeaders = true };
+        table.AddColumn(new TableColumn("[dim]#[/]") { Width = 4, NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]Artist[/]"));
+        table.AddColumn(new TableColumn("[dim]Title[/]"));
+        table.AddColumn(new TableColumn("[dim]BPM[/]") { Alignment = Justify.Right, NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]Key[/]") { NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]Compat[/]") { Alignment = Justify.Right, NoWrap = true });
+        table.AddColumn(new TableColumn("[dim]Playlists[/]") { Alignment = Justify.Right, NoWrap = true });
+
+        for (var i = 0; i < results.Count; i++)
+        {
+            var (t, compat, coOccur, _) = results[i];
+            table.AddRow(
+                $"[dim]{i + 1,3}[/]",
+                Markup.Escape(t.Artist),
+                Markup.Escape(t.Name),
+                $"[yellow]{t.Bpm:F1}[/]",
+                $"[yellow]{Markup.Escape(t.Key)}[/]",
+                compat.HasValue ? $"[dim]{compat.Value:F3}[/]" : "[dim]—[/]",
+                coOccur.HasValue ? $"[dim]{coOccur.Value}[/]" : "[dim]—[/]");
+        }
+
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+    }
+
+    /// <summary>
     /// Registers the full DJ Buddy tool surface with the Copilot SDK. Tools close over the
     /// workspace store and the shared graph task; every return is ID-first to keep the session
     /// transcript compact.
     /// </summary>
-    private static CopilotSession CreateSession(
+    private static async Task<CopilotSession> CreateSessionCoreAsync(
         CopilotClient copilotClient,
         WorkspaceStore store,
         Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
@@ -458,7 +684,7 @@ internal static class Program
                 "Tracks similar to a source by harmonic compatibility and/or playlist co-occurrence. Returns IDs plus evidence components."),
         };
 
-        var sess = copilotClient.CreateSessionAsync(new SessionConfig
+        return await copilotClient.CreateSessionAsync(new SessionConfig
         {
             Model = "claude-haiku-4.5",
             OnPermissionRequest = PermissionHandler.ApproveAll,
@@ -469,9 +695,7 @@ internal static class Program
                 Mode = SystemMessageMode.Replace,
                 Content = SystemPrompt.Create(lib.Tracks.Count, plCount),
             },
-        }).GetAwaiter().GetResult();
-
-        return sess;
+        });
     }
 
     /// <summary>

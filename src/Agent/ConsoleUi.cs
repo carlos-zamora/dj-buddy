@@ -76,6 +76,10 @@ internal static class ConsoleUi
         table.AddRow("[bold]/stats[/]", "Show library statistics");
         table.AddRow("[bold]/workspaces[/]", "List active workspaces (named TrackSets) in this session");
         table.AddRow("[bold]/interactive [[ws]][/]", "Offline workspace builder + graph picker (no LLM calls). Type ? inside for subcommands.");
+        table.AddRow("[bold]/search <query>[/]", "Search the library and display results (works offline)");
+        table.AddRow("[bold]/suggest <trackId>[/]", "Show compatible next-track candidates from the graph (works offline)");
+        table.AddRow("[bold]/similar <trackId>[/]", "Show similar tracks by harmonic compat + co-occurrence (works offline)");
+        table.AddRow("[bold]/reconnect[/]", "Retry connecting to GitHub Copilot after a network failure");
         table.AddRow("[bold]/export[/]", "Export DJ_BUDDY playlists into rekordbox.xml (backs up original as .bak)");
         table.AddRow("[bold]/export <path>[/]", "Export DJ_BUDDY playlists to a specific output file");
         table.AddRow("[bold]/clear[/]", "Clear the screen");
@@ -83,7 +87,7 @@ internal static class ConsoleUi
 
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("  [dim]Or just type a question to chat with DJ Buddy.[/]");
+        AnsiConsole.MarkupLine("  [dim]Or just type a question to chat with DJ Buddy (requires GitHub Copilot).[/]");
         AnsiConsole.WriteLine();
     }
 
