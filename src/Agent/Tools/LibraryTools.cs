@@ -116,12 +116,10 @@ internal static class LibraryTools
     /// </summary>
     public static object LibraryPlaylistIds(RekordboxLibrary library, string playlistName)
     {
-        var node = library.Root.FindByName(playlistName);
+        var node = library.Root.EnumeratePlaylists()
+            .FirstOrDefault(p => p.Name == playlistName);
         if (node is null)
             return new { error = $"Playlist '{playlistName}' not found." };
-
-        if (node.IsFolder)
-            return new { error = $"'{playlistName}' is a folder, not a playlist." };
 
         return new { playlistName = node.Name, count = node.TrackKeys.Count, trackIds = node.TrackKeys };
     }

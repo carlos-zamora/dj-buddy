@@ -301,10 +301,9 @@ internal static class WorkspaceTools
         if (!TryParseMode(mode, out var parsedMode, out var error))
             return new { error };
 
-        var node = store.Library.Root.FindByName(playlistName);
+        var node = store.Library.Root.EnumeratePlaylists()
+            .FirstOrDefault(p => p.Name == playlistName);
         if (node is null) return new { error = $"Playlist '{playlistName}' not found." };
-        // Folders hold no TrackKeys themselves — reject rather than silently folding an empty set.
-        if (node.IsFolder) return new { error = $"'{playlistName}' is a folder, not a playlist." };
 
         var ws = store.GetOrCreate(name);
         ws.Apply(parsedMode, node.TrackKeys);

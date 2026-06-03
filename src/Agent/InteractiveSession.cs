@@ -102,6 +102,71 @@ internal static class InteractiveSession
                         ApplySearch(store, ws.Name, "except", rest);
                         break;
 
+                    case "search":
+                    {
+                        if (!Require(rest, "Usage: search <query>")) break;
+                        var tracks = store.Library.Tracks.Values
+                            .Search(rest, TrackSearchFields.All)
+                            .Take(50).ToList();
+                        ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
+                            $"Search: {Markup.Escape(rest)} ({tracks.Count} results)");
+                        break;
+                    }
+
+                    case "playlists":
+                    {
+                        var list = store.Library.Root.EnumeratePlaylists()
+                            .Where(p => string.IsNullOrEmpty(rest)
+                                || p.Name.Contains(rest, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                        if (list.Count == 0)
+                        {
+                            ConsoleUi.PrintError(string.IsNullOrEmpty(rest)
+                                ? "No playlists found in library."
+                                : $"No playlists matching '{rest}'.");
+                            break;
+                        }
+                        var pt = new Table { ShowHeaders = false, Border = TableBorder.None };
+                        pt.AddColumn(new TableColumn(string.Empty));
+                        pt.AddColumn(new TableColumn(string.Empty) { Alignment = Justify.Right, NoWrap = true });
+                        foreach (var p in list)
+                            pt.AddRow($"[bold]{Markup.Escape(p.Name)}[/]", $"[dim]{p.TrackKeys.Count} tracks[/]");
+                        AnsiConsole.WriteLine();
+                        AnsiConsole.Write(pt);
+                        AnsiConsole.WriteLine();
+                        break;
+                    }
+
+                    case "playlist":
+                    {
+                        if (!Require(rest, "Usage: playlist <name>  or  playlist <name> / <query>")) break;
+
+                        var sep = rest.IndexOf(" / ", StringComparison.Ordinal);
+                        var playlistName = sep >= 0 ? rest[..sep].Trim() : rest;
+                        var searchQuery  = sep >= 0 ? rest[(sep + 3)..].Trim() : string.Empty;
+
+                        var node = store.Library.Root.EnumeratePlaylists()
+                            .FirstOrDefault(p => p.Name == playlistName);
+                        if (node is null)
+                        {
+                            ConsoleUi.PrintError($"Playlist '{playlistName}' not found. Use 'playlists' to browse.");
+                            break;
+                        }
+
+                        IEnumerable<Track> playlistTracks = node.TrackKeys
+                            .Select(id => store.Library.Tracks.TryGetValue(id, out var t) ? t : null)
+                            .OfType<Track>();
+                        if (!string.IsNullOrEmpty(searchQuery))
+                            playlistTracks = playlistTracks.Search(searchQuery, TrackSearchFields.All);
+
+                        var results = playlistTracks.Take(200).ToList();
+                        var title = string.IsNullOrEmpty(searchQuery)
+                            ? $"{Markup.Escape(playlistName)} ({results.Count} tracks)"
+                            : $"{Markup.Escape(playlistName)} / {Markup.Escape(searchQuery)} ({results.Count} results)";
+                        ConsoleUi.RenderTrackTable(results, ["artist", "name", "bpm", "key"], title);
+                        break;
+                    }
+
                     case "add-playlist":
                     {
                         if (!Require(rest, "Usage: add-playlist <playlist-name>")) break;
@@ -344,26 +409,50 @@ internal static class InteractiveSession
     private static void PrintInteractiveHelp()
     {
         AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("  [dim]<query> = free-text search across title, artist, album, and comment[/]");
+        AnsiConsole.WriteLine();
+
         var table = new Table { ShowHeaders = false, Border = TableBorder.None };
-        table.AddColumn(new TableColumn(string.Empty) { Width = 28, NoWrap = true });
+        table.AddColumn(new TableColumn(string.Empty) { Width = 30, NoWrap = true });
         table.AddColumn(new TableColumn(string.Empty));
 
-        table.AddRow("[bold]add <query>[/]", "Search library, union results into workspace");
-        table.AddRow("[bold]intersect <query>[/]", "Keep only matches");
-        table.AddRow("[bold]except <query>[/]", "Remove matches");
+        static void Section(Table t, string label)
+        {
+            t.AddEmptyRow();
+            t.AddRow($"[dim italic]{label}[/]", string.Empty);
+        }
+
+        Section(table, "Set operations");
+        table.AddRow("[bold]add <query>[/]", "Union search results into workspace");
+        table.AddRow("[bold]intersect <query>[/]", "Keep only tracks matching query");
+        table.AddRow("[bold]except <query>[/]", "Remove tracks matching query");
         table.AddRow("[bold]add-playlist <name>[/]", "Union a library playlist's tracks");
+
+        Section(table, "Filters");
         table.AddRow("[bold]key <camelot>[/]", "Intersect by Camelot key (e.g. key 8A)");
         table.AddRow("[bold]bpm <min> <max>[/]", "Intersect by BPM range");
-        table.AddRow("[bold]playlist-filter <substr>[/]", "Intersect with tracks in any playlist matching the substring");
-        table.AddRow("[bold]trim <n> [[by]][/]", "Shrink to top N (by = rating | recent | playCount | random)");
-        table.AddRow("[bold]show [[n]][/]", "Show the first N tracks (default 20)");
+        table.AddRow("[bold]playlist-filter <substr>[/]", "Intersect with tracks in any playlist matching substring");
+
+        Section(table, "Browse");
+        table.AddRow("[bold]search <query>[/]", "Preview search results without changing workspace");
+        table.AddRow("[bold]playlists [[substr]][/]", "List library playlists (optionally filtered)");
+        table.AddRow("[bold]playlist <name>[/]", "Show all tracks in a library playlist");
+        table.AddRow("[bold]playlist <name> / <query>[/]", "Search within a playlist");
+        table.AddRow("[bold]show [[n]][/]", "Show the first N workspace tracks (default 20)");
         table.AddRow("[bold]count[/]", "Print workspace size");
-        table.AddRow("[bold]clear[/]", "Empty the workspace");
+
+        Section(table, "Ordering");
+        table.AddRow("[bold]trim <n> [[by]][/]", "Shrink to top N (by = rating | recent | playCount | random)");
         table.AddRow("[bold]seed <trackId>[/]", "Set the seed track for ordering / pick");
-        table.AddRow("[bold]order [[targetCount]][/]", "Order via the compatibility graph (optionally trim to N first)");
+        table.AddRow("[bold]order [[targetCount]][/]", "Order via the compatibility graph");
         table.AddRow("[bold]pick[/]", "Walk the graph one neighbor at a time");
+
+        Section(table, "Session");
         table.AddRow("[bold]commit [[name]][/]", "Commit to DJ_BUDDY and exit");
+        table.AddRow("[bold]clear[/]", "Empty the workspace");
+        table.AddRow("[bold]help | ?[/]", "Show this help");
         table.AddRow("[bold]q | quit[/]", "Exit without committing");
+
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
     }
