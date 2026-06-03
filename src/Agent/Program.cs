@@ -1,4 +1,4 @@
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using Microsoft.Extensions.AI;
 using DJBuddy.Agent;
 using DJBuddy.Agent.Tools;
@@ -79,7 +79,7 @@ internal static class Program
         CopilotSession? handledSession = null;
         const string spinnerSuffix = " Thinking...";
 
-        void RegisterSessionHandler(CopilotSession s) => s.On(ev =>
+        void RegisterSessionHandler(CopilotSession s) => s.On<SessionEvent>(ev =>
         {
             if (ev is ToolExecutionStartEvent toolStart)
             {
@@ -689,7 +689,7 @@ internal static class Program
             Model = "claude-haiku-4.5",
             OnPermissionRequest = PermissionHandler.ApproveAll,
             Streaming = true,
-            Tools = tools,
+            Tools = (ICollection<AIFunctionDeclaration>)tools,
             SystemMessage = new SystemMessageConfig
             {
                 Mode = SystemMessageMode.Replace,
