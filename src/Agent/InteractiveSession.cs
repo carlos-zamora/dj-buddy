@@ -2,6 +2,7 @@ using DJBuddy.Agent.Tools;
 using DJBuddy.Rekordbox.Graph;
 using DJBuddy.Rekordbox.Models;
 using DJBuddy.Rekordbox.Query;
+using NAudio.Wave;
 using QuikGraph;
 using Spectre.Console;
 
@@ -44,11 +45,16 @@ internal static class InteractiveSession
         var undoIds = new Stack<string[]>();
         var undoSeed = new Stack<string?>();
 
+        using var player = new MediaPlayer();
+
+        // Tracks from the most recent display command; lets "play 5" reference row 5.
+        List<Track> lastShown = [];
+
         PrintOpeningScreen(ws);
 
         while (true)
         {
-            Console.Write(BuildPrompt(ws, seedId, store.Library));
+            Console.Write(BuildPrompt(ws, seedId, store.Library, player));
             var raw = Console.ReadLine();
             if (raw is null) return;
 
@@ -172,7 +178,7 @@ internal static class InteractiveSession
                     // ── Preview ──────────────────────────────────────────────────────────────
 
                     case "search" when HasInPlaylist(tokens, out var sq, out var sp):
-                        ShowPlaylistSearch(store, sp!, sq!);
+                        lastShown = ShowPlaylistSearch(store, sp!, sq!);
                         break;
 
                     case "search":
@@ -180,7 +186,7 @@ internal static class InteractiveSession
                     {
                         var query = JoinFrom(tokens, 1);
                         if (!RequireArg(query, $"Usage: {verb} <query>")) break;
-                        PreviewSearch(store, query);
+                        lastShown = PreviewSearch(store, query);
                         break;
                     }
 
@@ -188,7 +194,7 @@ internal static class InteractiveSession
                     {
                         var name = JoinFrom(tokens, 2);
                         if (!RequireArg(name, "Usage: show playlist <name>")) break;
-                        ShowPlaylist(store, name);
+                        lastShown = ShowPlaylist(store, name);
                         break;
                     }
 
@@ -201,6 +207,7 @@ internal static class InteractiveSession
                             tracks,
                             ["artist", "name", "bpm", "key"],
                             $"{ws.Name} — {tracks.Count} of {ws.Count} tracks");
+                        lastShown = tracks;
                         break;
                     }
 
@@ -217,6 +224,91 @@ internal static class InteractiveSession
                     {
                         var filter = JoinFrom(tokens, 1);
                         ListPlaylists(store, filter);
+                        break;
+                    }
+
+                    // ── Playback ─────────────────────────────────────────────────────────────
+
+                    case "play":
+                    {
+                        var arg = JoinFrom(tokens, 1);
+                        if (string.IsNullOrWhiteSpace(arg))
+                        {
+                            if (player.CurrentTrack is null)
+                            {
+                                ConsoleUi.PrintError("Nothing loaded. Usage: play <query or id>");
+                                break;
+                            }
+                            player.Pause();
+                        }
+                        else
+                        {
+                            Track? resolved = null;
+                            if (int.TryParse(arg, out var idx) && idx >= 1 && idx <= lastShown.Count)
+                                resolved = lastShown[idx - 1];
+                            else if (store.Library.Tracks.TryGetValue(arg, out var byId))
+                                resolved = byId;
+                            else
+                                resolved = store.Library.Tracks.Values
+                                    .Search(arg)
+                                    .FirstOrDefault();
+
+                            if (resolved is null)
+                            {
+                                ConsoleUi.PrintError($"No track found matching '{Markup.Escape(arg)}'.");
+                                break;
+                            }
+                            if (string.IsNullOrEmpty(resolved.Location))
+                            {
+                                ConsoleUi.PrintError($"Track '{Markup.Escape(resolved.Name)}' has no file path.");
+                                break;
+                            }
+                            var uri = new Uri(resolved.Location);
+                            // file://localhost/C:/path → LocalPath gives \\localhost\C:\path (UNC) on Windows.
+                            // When the host is loopback, extract the path component directly instead.
+                            var localPath = uri.IsLoopback
+                                ? Uri.UnescapeDataString(uri.AbsolutePath).TrimStart('/')
+                                : uri.LocalPath;
+                            player.Load(localPath, resolved);
+                            player.Play();
+                        }
+                        PrintPlaybackStatus(player);
+                        break;
+                    }
+
+                    case "pause":
+                    {
+                        if (player.CurrentTrack is null)
+                        {
+                            ConsoleUi.PrintError("Nothing is playing.");
+                            break;
+                        }
+                        player.Pause();
+                        PrintPlaybackStatus(player);
+                        break;
+                    }
+
+                    case "ff":
+                    {
+                        if (player.CurrentTrack is null) { ConsoleUi.PrintError("Nothing is playing."); break; }
+                        player.SkipSeconds(5);
+                        PrintPlaybackStatus(player);
+                        break;
+                    }
+
+                    case "rw":
+                    {
+                        if (player.CurrentTrack is null) { ConsoleUi.PrintError("Nothing is playing."); break; }
+                        player.SkipSeconds(-5);
+                        PrintPlaybackStatus(player);
+                        break;
+                    }
+
+                    case "stop":
+                    {
+                        if (player.CurrentTrack is null) { ConsoleUi.PrintError("Nothing is playing."); break; }
+                        player.Stop();
+                        AnsiConsole.MarkupLine("  [dim]Stopped.[/]");
                         break;
                     }
 
@@ -474,22 +566,23 @@ internal static class InteractiveSession
             playlistFilter: null, key: null, minBpm: null, maxBpm: null, limit: "5000");
     }
 
-    private static void PreviewSearch(WorkspaceStore store, string query)
+    private static List<Track> PreviewSearch(WorkspaceStore store, string query)
     {
         var tracks = store.Library.Tracks.Values
             .Search(query, TrackSearchFields.All)
             .Take(50).ToList();
         ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
             $"Search: {Markup.Escape(query)} ({tracks.Count} results)");
+        return tracks;
     }
 
-    private static void ShowPlaylist(WorkspaceStore store, string name)
+    private static List<Track> ShowPlaylist(WorkspaceStore store, string name)
     {
         var node = FindPlaylist(store, name);
         if (node is null)
         {
             ConsoleUi.PrintError($"Playlist '{name}' not found. Try: playlists {name}");
-            return;
+            return [];
         }
         var tracks = node.TrackKeys
             .Select(id => store.Library.Tracks.TryGetValue(id, out var t) ? t : null)
@@ -497,15 +590,16 @@ internal static class InteractiveSession
             .Take(200).ToList();
         ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
             $"{Markup.Escape(node.Name)} ({tracks.Count} tracks)");
+        return tracks;
     }
 
-    private static void ShowPlaylistSearch(WorkspaceStore store, string playlistName, string query)
+    private static List<Track> ShowPlaylistSearch(WorkspaceStore store, string playlistName, string query)
     {
         var node = FindPlaylist(store, playlistName);
         if (node is null)
         {
             ConsoleUi.PrintError($"Playlist '{playlistName}' not found. Try: playlists {playlistName}");
-            return;
+            return [];
         }
         var tracks = node.TrackKeys
             .Select(id => store.Library.Tracks.TryGetValue(id, out var t) ? t : null)
@@ -514,6 +608,7 @@ internal static class InteractiveSession
             .Take(200).ToList();
         ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
             $"{Markup.Escape(node.Name)} / {Markup.Escape(query)} ({tracks.Count} results)");
+        return tracks;
     }
 
     private static void ListPlaylists(WorkspaceStore store, string filter)
@@ -682,12 +777,36 @@ internal static class InteractiveSession
 
     // ── Output helpers ───────────────────────────────────────────────────────────────────────
 
-    private static string BuildPrompt(TrackSet ws, string? seedId, RekordboxLibrary library)
+    private static string BuildPrompt(TrackSet ws, string? seedId, RekordboxLibrary library, MediaPlayer player)
     {
         var seedLabel = seedId is not null && library.Tracks.TryGetValue(seedId, out var t)
             ? $" | seed: {t.Name}"
             : string.Empty;
-        return $"🎧 [{ws.Count} tracks{seedLabel}] > ";
+
+        var nowPlaying = string.Empty;
+        if (player.CurrentTrack is not null)
+        {
+            var state = player.IsPlaying ? "▶" : "⏸";
+            var elapsed = FormatTime(player.CurrentTime);
+            var total = FormatTime(player.TotalTime);
+            nowPlaying = $" [{state} {player.CurrentTrack.Name} {elapsed}/{total}]";
+        }
+
+        return $"🎧 [{ws.Count} tracks{seedLabel}]{nowPlaying} > ";
+    }
+
+    private static string FormatTime(TimeSpan t) =>
+        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+
+    private static void PrintPlaybackStatus(MediaPlayer player)
+    {
+        if (player.CurrentTrack is null) return;
+        var state = player.IsPlaying ? "▶ Playing" : "⏸ Paused";
+        var elapsed = FormatTime(player.CurrentTime);
+        var total = FormatTime(player.TotalTime);
+        var name = Markup.Escape(player.CurrentTrack.Name);
+        var artist = Markup.Escape(player.CurrentTrack.Artist);
+        AnsiConsole.MarkupLine($"  [dim]{state}: {artist} — {name} ({elapsed} / {total})[/]");
     }
 
     private static void PrintResult(object result, TrackSet ws)
@@ -763,6 +882,14 @@ internal static class InteractiveSession
         table.AddRow("[bold]next[/]",                           "Walk the graph one neighbor at a time");
         table.AddRow("[bold]sort by rating|recent|playCount[/]","Sort workspace without removing tracks");
         table.AddRow("[bold]take <n> [[by criterion]][/]",       "Keep top N tracks");
+
+        Section(table, "Playback");
+        table.AddRow("[bold]play <query or id>[/]",             "Load and play a track");
+        table.AddRow("[bold]play[/]",                           "Resume / toggle play–pause");
+        table.AddRow("[bold]pause[/]",                          "Pause or resume playback");
+        table.AddRow("[bold]ff[/]",                             "Skip forward 5 seconds");
+        table.AddRow("[bold]rw[/]",                             "Skip backward 5 seconds");
+        table.AddRow("[bold]stop[/]",                           "Stop playback");
 
         Section(table, "Session");
         table.AddRow("[bold]save [[name]][/]",                  "Save to DJ_BUDDY and exit");
