@@ -9,5 +9,6 @@
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="src/Rekordbox.Tests/Rekordbox.Tests.csproj" />
+    <Project Path="src/Agent.Tests/Agent.Tests.csproj" />
   </Folder>
 </Solution>

@@ -41,8 +41,11 @@ dotnet run --project src/Agent/Agent.csproj -- path/to/rekordbox.xml
 # Shared library only
 dotnet build Rekordbox/Rekordbox.csproj
 
-# Tests
-dotnet test Rekordbox.Tests/Rekordbox.Tests.csproj
+# Shared library tests
+dotnet test src/Rekordbox.Tests/Rekordbox.Tests.csproj
+
+# Agent tests
+dotnet test src/Agent.Tests/Agent.Tests.csproj
 ```
 
 ### Docker
@@ -91,7 +94,7 @@ On startup the agent loads your rekordbox library (from `%MUSIC%/rekordbox/rekor
 | `/load <path>` | Load a different rekordbox.xml (resets conversation) |
 | `/stats` | Show library statistics (genres, artists, keys, BPM range) |
 | `/workspaces` | List in-memory workspaces (named `TrackSet`s) for this session |
-| `/interactive [name]` | Offline workspace builder + graph picker — no LLM calls. Type `?` inside for subcommands (add, intersect, key, bpm, trim, order, pick, commit, …) |
+| `/interactive [name]` | Offline workspace builder + graph picker — no LLM calls. Type `help` inside for all commands (add, filter, remove, take, order, next, save, undo, stats, …) |
 | `/export [path]` | Write the `DJ_BUDDY` folder back into rekordbox.xml (`.bak` saved when overwriting in place) |
 | `/clear` | Clear the screen |
 | `/exit` | Exit the agent |
@@ -145,6 +148,8 @@ Type any question to chat with DJ Buddy — it remembers conversation context, b
 ├── Rekordbox.Tests/               # xUnit v3 tests for the shared library
 │   ├── Fixtures/                  # Embedded XML fixtures (minimal.xml, round_trip.xml)
 │   └── Xml/ Query/                # Test classes mirroring library structure
+├── Agent.Tests/                   # xUnit v3 tests for the Agent console app
+│   └── InteractiveParserTests.cs  # Tokenizer + workspace dispatch tests
 ├── Services/
 │   ├── DjBuddyPlaylistStore.cs    # Static store for favorites & doubles (JSON persistence)
 │   ├── GraphStore.cs              # Lazily builds + caches the shared Rekordbox.Graph on background task

@@ -8,30 +8,21 @@ using Spectre.Console;
 namespace DJBuddy.Agent;
 
 /// <summary>
-/// REPL-side interactive workspace builder + set picker. Runs entirely offline — no LLM calls,
-/// so the whole flow costs zero tokens. Two phases share a single command loop:
-/// <list type="bullet">
-///   <item><description><b>Build</b> — populate / refine a workspace via search, set ops,
-///   filter helpers. Think "the LLM tools, but typed by hand".</description></item>
-///   <item><description><b>Pick</b> — once ordered or seeded, walk the compatibility graph one
-///   neighbor at a time. Same logic as the original interactive mode.</description></item>
-/// </list>
+/// Offline interactive workspace builder and graph-walk picker — no LLM calls, zero tokens.
+/// Entered via the <c>/interactive</c> REPL command.
 /// </summary>
 internal static class InteractiveSession
 {
-    private const string DefaultScratchName = "_interactive";
+    private const string DefaultScratchName = "session";
     private const int NeighborLimit = 10;
     private const int DefaultShowLimit = 20;
 
-    /// <summary>
-    /// Enters the interactive sub-REPL.
-    /// </summary>
-    /// <param name="store">The session workspace store. New workspaces are persisted here.</param>
-    /// <param name="graphTask">Shared compatibility graph task; awaited lazily on first ordering / pick.</param>
+    /// <summary>Enters the interactive sub-REPL.</summary>
+    /// <param name="store">Session workspace store; mutations are persisted here.</param>
+    /// <param name="graphTask">Shared compatibility graph; awaited on first <c>order</c> or <c>next</c> call.</param>
     /// <param name="workspaceName">
-    /// Optional workspace to operate on. When null/blank, a scratch workspace named
-    /// <c>_interactive</c> is created (or reused). Otherwise the named workspace is loaded
-    /// (created empty if it doesn't exist).
+    /// Optional workspace to operate on. Omit to use a scratch workspace named <c>session</c>.
+    /// The workspace is created empty if it doesn't exist yet.
     /// </param>
     public static async Task RunAsync(
         WorkspaceStore store,
@@ -45,234 +36,276 @@ internal static class InteractiveSession
         var ws = store.GetOrCreate(resolvedName);
         string? seedId = null;
 
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"  [bold]Interactive workspace builder — '{Markup.Escape(ws.Name)}' ({ws.Count} tracks)[/]");
-        PrintInteractiveHelp();
+        // Pre-load the full library into any empty workspace so the user can filter down immediately.
+        if (ws.Count == 0)
+            ws.Apply(TrackSetMode.Union, store.Library.Tracks.Keys);
+
+        // Undo history: parallel stacks of (workspace IDs snapshot, seed snapshot)
+        var undoIds = new Stack<string[]>();
+        var undoSeed = new Stack<string?>();
+
+        PrintOpeningScreen(ws);
 
         while (true)
         {
-            Console.Write($"  [{ws.Name}{(ws.Ordered ? "*" : "")}] > ");
+            Console.Write(BuildPrompt(ws, seedId, store.Library));
             var raw = Console.ReadLine();
             if (raw is null) return;
 
             var line = raw.Trim();
             if (line.Length == 0) continue;
 
-            var (cmd, rest) = SplitCommand(line);
+            var tokens = ParseTokens(line);
+            if (tokens.Length == 0) continue;
+
+            var verb = tokens[0].ToLowerInvariant();
+            var sub  = tokens.Length > 1 ? tokens[1].ToLowerInvariant() : string.Empty;
 
             try
             {
-                switch (cmd)
+                switch (verb)
                 {
                     case "help":
                     case "?":
-                        PrintInteractiveHelp();
+                        PrintHelp();
                         break;
 
-                    case "show":
+                    // ── Workspace ────────────────────────────────────────────────────────────
+
+                    case "add" when sub == "playlist":
                     {
-                        var n = int.TryParse(rest, out var parsed) && parsed > 0 ? parsed : DefaultShowLimit;
-                        var tracks = ws.Tracks.Take(n).ToList();
-                        ConsoleUi.RenderTrackTable(
-                            tracks,
-                            ["artist", "name", "bpm", "key"],
-                            $"{ws.Name} (showing {tracks.Count} of {ws.Count})");
+                        var name = JoinFrom(tokens, 2);
+                        if (!RequireArg(name, "Usage: add playlist <name>  e.g. add playlist \"Dubstep Favorites\"")) break;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = WorkspaceTools.WorkspaceFromLibraryPlaylist(store, ws.Name, "union", name);
+                        PrintResult(result, ws);
                         break;
                     }
 
-                    case "count":
-                        AnsiConsole.MarkupLine($"  [dim]{ws.Count} tracks, {(ws.Ordered ? "ordered" : "unordered")}.[/]");
+                    case "add":
+                    {
+                        var query = JoinFrom(tokens, 1);
+                        if (!RequireArg(query, "Usage: add <query>  e.g. add zeds dead")) break;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = ApplySearch(store, ws.Name, "union", query);
+                        PrintResult(result, ws);
                         break;
+                    }
+
+                    case "filter" when sub == "key":
+                    {
+                        var camelot = JoinFrom(tokens, 2);
+                        if (!RequireArg(camelot, "Usage: filter key <camelot>  e.g. filter key 8A")) break;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = WorkspaceTools.WorkspaceFromSearch(
+                            store, ws.Name, "intersect", query: "", playlistFilter: null,
+                            key: camelot, minBpm: null, maxBpm: null, limit: "5000");
+                        PrintResult(result, ws);
+                        break;
+                    }
+
+                    case "filter" when sub == "bpm":
+                    {
+                        if (tokens.Length < 4)
+                        {
+                            ConsoleUi.PrintError("Usage: filter bpm <min> <max>  e.g. filter bpm 140 160");
+                            break;
+                        }
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = WorkspaceTools.WorkspaceFromSearch(
+                            store, ws.Name, "intersect", query: "", playlistFilter: null,
+                            key: null, minBpm: tokens[2], maxBpm: tokens[3], limit: "5000");
+                        PrintResult(result, ws);
+                        break;
+                    }
+
+                    case "filter" when sub == "playlist":
+                    {
+                        var name = JoinFrom(tokens, 2);
+                        if (!RequireArg(name, "Usage: filter playlist <name>")) break;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = WorkspaceTools.WorkspaceFromSearch(
+                            store, ws.Name, "intersect", query: "", playlistFilter: name,
+                            key: null, minBpm: null, maxBpm: null, limit: "5000");
+                        PrintResult(result, ws);
+                        break;
+                    }
+
+                    case "filter":
+                    {
+                        var query = JoinFrom(tokens, 1);
+                        if (!RequireArg(query, "Usage: filter <query>  (keeps only tracks matching the query)")) break;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = ApplySearch(store, ws.Name, "intersect", query);
+                        PrintResult(result, ws);
+                        break;
+                    }
+
+                    case "remove":
+                    {
+                        var query = JoinFrom(tokens, 1);
+                        if (!RequireArg(query, "Usage: remove <query>")) break;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = ApplySearch(store, ws.Name, "except", query);
+                        PrintResult(result, ws);
+                        break;
+                    }
 
                     case "clear":
+                        PushUndo(undoIds, undoSeed, ws, seedId);
                         ws.Apply(TrackSetMode.Replace, []);
                         seedId = null;
                         AnsiConsole.MarkupLine("  [dim]Workspace cleared.[/]");
                         break;
 
-                    case "add":
-                        ApplySearch(store, ws.Name, "union", rest);
+                    case "undo":
+                        if (undoIds.Count == 0)
+                        {
+                            AnsiConsole.MarkupLine("  [dim]Nothing to undo.[/]");
+                            break;
+                        }
+                        ws.Apply(TrackSetMode.Replace, undoIds.Pop());
+                        seedId = undoSeed.Pop();
+                        AnsiConsole.MarkupLine($"  [dim]Undone. {ws.Count} tracks.[/]");
                         break;
 
-                    case "intersect":
-                        ApplySearch(store, ws.Name, "intersect", rest);
-                        break;
+                    // ── Preview ──────────────────────────────────────────────────────────────
 
-                    case "except":
-                        ApplySearch(store, ws.Name, "except", rest);
+                    case "search" when HasInPlaylist(tokens, out var sq, out var sp):
+                        ShowPlaylistSearch(store, sp!, sq!);
                         break;
 
                     case "search":
+                    case "find":
                     {
-                        if (!Require(rest, "Usage: search <query>")) break;
-                        var tracks = store.Library.Tracks.Values
-                            .Search(rest, TrackSearchFields.All)
-                            .Take(50).ToList();
-                        ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
-                            $"Search: {Markup.Escape(rest)} ({tracks.Count} results)");
+                        var query = JoinFrom(tokens, 1);
+                        if (!RequireArg(query, $"Usage: {verb} <query>")) break;
+                        PreviewSearch(store, query);
                         break;
                     }
+
+                    case "show" when sub == "playlist":
+                    {
+                        var name = JoinFrom(tokens, 2);
+                        if (!RequireArg(name, "Usage: show playlist <name>")) break;
+                        ShowPlaylist(store, name);
+                        break;
+                    }
+
+                    case "show":
+                    {
+                        var n = tokens.Length > 1 && int.TryParse(tokens[1], out var p) && p > 0
+                            ? p : DefaultShowLimit;
+                        var tracks = ws.Tracks.Take(n).ToList();
+                        ConsoleUi.RenderTrackTable(
+                            tracks,
+                            ["artist", "name", "bpm", "key"],
+                            $"{ws.Name} — {tracks.Count} of {ws.Count} tracks");
+                        break;
+                    }
+
+                    case "count":
+                        AnsiConsole.MarkupLine(
+                            $"  [dim]{ws.Count} tracks{(ws.Ordered ? ", ordered" : "")}.[/]");
+                        break;
+
+                    case "stats":
+                        PrintStats(ws);
+                        break;
 
                     case "playlists":
                     {
-                        var list = store.Library.Root.EnumeratePlaylists()
-                            .Where(p => string.IsNullOrEmpty(rest)
-                                || p.Name.Contains(rest, StringComparison.OrdinalIgnoreCase))
-                            .ToList();
-                        if (list.Count == 0)
-                        {
-                            ConsoleUi.PrintError(string.IsNullOrEmpty(rest)
-                                ? "No playlists found in library."
-                                : $"No playlists matching '{rest}'.");
-                            break;
-                        }
-                        var pt = new Table { ShowHeaders = false, Border = TableBorder.None };
-                        pt.AddColumn(new TableColumn(string.Empty));
-                        pt.AddColumn(new TableColumn(string.Empty) { Alignment = Justify.Right, NoWrap = true });
-                        foreach (var p in list)
-                            pt.AddRow($"[bold]{Markup.Escape(p.Name)}[/]", $"[dim]{p.TrackKeys.Count} tracks[/]");
-                        AnsiConsole.WriteLine();
-                        AnsiConsole.Write(pt);
-                        AnsiConsole.WriteLine();
+                        var filter = JoinFrom(tokens, 1);
+                        ListPlaylists(store, filter);
                         break;
                     }
 
-                    case "playlist":
-                    {
-                        if (!Require(rest, "Usage: playlist <name>  or  playlist <name> / <query>")) break;
-
-                        var sep = rest.IndexOf(" / ", StringComparison.Ordinal);
-                        var playlistName = sep >= 0 ? rest[..sep].Trim() : rest;
-                        var searchQuery  = sep >= 0 ? rest[(sep + 3)..].Trim() : string.Empty;
-
-                        var node = store.Library.Root.EnumeratePlaylists()
-                            .FirstOrDefault(p => p.Name == playlistName);
-                        if (node is null)
-                        {
-                            ConsoleUi.PrintError($"Playlist '{playlistName}' not found. Use 'playlists' to browse.");
-                            break;
-                        }
-
-                        IEnumerable<Track> playlistTracks = node.TrackKeys
-                            .Select(id => store.Library.Tracks.TryGetValue(id, out var t) ? t : null)
-                            .OfType<Track>();
-                        if (!string.IsNullOrEmpty(searchQuery))
-                            playlistTracks = playlistTracks.Search(searchQuery, TrackSearchFields.All);
-
-                        var results = playlistTracks.Take(200).ToList();
-                        var title = string.IsNullOrEmpty(searchQuery)
-                            ? $"{Markup.Escape(playlistName)} ({results.Count} tracks)"
-                            : $"{Markup.Escape(playlistName)} / {Markup.Escape(searchQuery)} ({results.Count} results)";
-                        ConsoleUi.RenderTrackTable(results, ["artist", "name", "bpm", "key"], title);
-                        break;
-                    }
-
-                    case "add-playlist":
-                    {
-                        if (!Require(rest, "Usage: add-playlist <playlist-name>")) break;
-                        var result = WorkspaceTools.WorkspaceFromLibraryPlaylist(store, ws.Name, "union", rest);
-                        PrintToolResult(result, ws);
-                        break;
-                    }
-
-                    case "key":
-                    {
-                        if (!Require(rest, "Usage: key <camelot>  (e.g. key 8A)")) break;
-                        var result = WorkspaceTools.WorkspaceFromSearch(
-                            store, ws.Name, "intersect", query: "", playlistFilter: null,
-                            key: rest, minBpm: null, maxBpm: null, limit: "5000");
-                        PrintToolResult(result, ws);
-                        break;
-                    }
-
-                    case "bpm":
-                    {
-                        var parts = rest.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                        if (parts.Length < 2)
-                        {
-                            ConsoleUi.PrintError("Usage: bpm <min> <max>  (e.g. bpm 140 160)");
-                            break;
-                        }
-                        var result = WorkspaceTools.WorkspaceFromSearch(
-                            store, ws.Name, "intersect", query: "", playlistFilter: null,
-                            key: null, minBpm: parts[0], maxBpm: parts[1], limit: "5000");
-                        PrintToolResult(result, ws);
-                        break;
-                    }
-
-                    case "playlist-filter":
-                    {
-                        if (!Require(rest, "Usage: playlist-filter <substring>")) break;
-                        var result = WorkspaceTools.WorkspaceFromSearch(
-                            store, ws.Name, "intersect", query: "", playlistFilter: rest,
-                            key: null, minBpm: null, maxBpm: null, limit: "5000");
-                        PrintToolResult(result, ws);
-                        break;
-                    }
-
-                    case "trim":
-                    {
-                        var parts = rest.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                        if (parts.Length == 0)
-                        {
-                            ConsoleUi.PrintError("Usage: trim <count> [by]   by = rating | recent | playCount | random");
-                            break;
-                        }
-                        var by = parts.Length > 1 ? parts[1] : null;
-                        var result = WorkspaceTools.TrimWorkspace(store, ws.Name, parts[0], by);
-                        PrintToolResult(result, ws);
-                        break;
-                    }
+                    // ── Ordering ─────────────────────────────────────────────────────────────
 
                     case "seed":
-                        if (!Require(rest, "Usage: seed <trackId>")) break;
-                        if (!ws.Contains(rest))
-                        {
-                            ConsoleUi.PrintError($"Track ID '{rest}' is not in this workspace.");
-                            break;
-                        }
-                        seedId = rest;
-                        AnsiConsole.MarkupLine($"  [dim]Seed set to {Markup.Escape(rest)}.[/]");
+                    {
+                        var arg = JoinFrom(tokens, 1);
+                        if (!RequireArg(arg, "Usage: seed <trackId or query>  e.g. seed \"One Who Lost\"")) break;
+                        var resolved = ResolveSeedArg(store, ws, arg);
+                        if (resolved is null) break;
+                        seedId = resolved;
+                        var t = store.Library.Tracks.GetValueOrDefault(seedId);
+                        var label = t is not null
+                            ? $"{Markup.Escape(t.Artist)} — {Markup.Escape(t.Name)}"
+                            : Markup.Escape(seedId);
+                        AnsiConsole.MarkupLine($"  [dim]Seed: {label}[/]");
                         break;
+                    }
 
                     case "order":
                     {
                         if (ws.Count == 0) { ConsoleUi.PrintError("Workspace is empty."); break; }
-                        var target = int.TryParse(rest, out var t) && t > 0 ? (string?)t.ToString() : null;
+                        var target = tokens.Length > 1 && int.TryParse(tokens[1], out var t) && t > 0
+                            ? (string?)t.ToString() : null;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
                         var result = await WorkspaceTools.OrderWorkspace(store, graphTask, ws.Name, seedId, target);
-                        PrintToolResult(result, ws);
+                        PrintResult(result, ws);
                         ConsoleUi.RenderTrackTable(
-                            ws.Tracks.ToList(),
-                            ["artist", "name", "bpm", "key"],
+                            ws.Tracks.ToList(), ["artist", "name", "bpm", "key"],
                             $"{ws.Name} (ordered)");
                         break;
                     }
 
-                    case "pick":
+                    case "sort" when sub == "by":
+                    {
+                        var criterion = tokens.Length > 2 ? tokens[2].ToLowerInvariant() : string.Empty;
+                        if (!RequireArg(criterion, "Usage: sort by rating|recent|playCount")) break;
+                        if (ws.Count == 0) { ConsoleUi.PrintError("Workspace is empty."); break; }
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        SortWorkspace(ws, criterion);
+                        AnsiConsole.MarkupLine($"  [dim]Sorted by {criterion}. {ws.Count} tracks, ordered.[/]");
+                        break;
+                    }
+
+                    case "take":
+                    {
+                        if (tokens.Length < 2)
+                        {
+                            ConsoleUi.PrintError("Usage: take <n> [by rating|recent|playCount|random]");
+                            break;
+                        }
+                        var byIdx = Array.FindIndex(tokens, 2, t =>
+                            t.Equals("by", StringComparison.OrdinalIgnoreCase));
+                        var by = byIdx >= 0 && byIdx + 1 < tokens.Length ? tokens[byIdx + 1] : null;
+                        PushUndo(undoIds, undoSeed, ws, seedId);
+                        var result = WorkspaceTools.TrimWorkspace(store, ws.Name, tokens[1], by);
+                        PrintResult(result, ws);
+                        break;
+                    }
+
+                    case "next":
                         if (ws.Count == 0) { ConsoleUi.PrintError("Workspace is empty."); break; }
                         await RunPickPhaseAsync(store, graphTask, ws, seedId);
-                        return;
+                        break;
 
-                    case "commit":
+                    // ── Session ──────────────────────────────────────────────────────────────
+
+                    case "save":
                     {
-                        if (ws.Count == 0) { ConsoleUi.PrintError("Workspace is empty."); break; }
-                        var name = string.IsNullOrWhiteSpace(rest) ? ws.Name : rest;
+                        if (ws.Count == 0) { ConsoleUi.PrintError("Workspace is empty. Nothing to save."); break; }
+                        var name = JoinFrom(tokens, 1);
+                        if (string.IsNullOrWhiteSpace(name)) name = ws.Name;
                         var (ok, message, count) = store.Commit(ws.Name, name);
                         if (ok)
-                            ConsoleUi.PrintStatus($"Committed '{message}' ({count} tracks) to DJ_BUDDY. Type /export to write rekordbox.xml.");
+                            ConsoleUi.PrintStatus(
+                                $"Saved '{message}' ({count} tracks) to DJ_BUDDY. Use /export to write rekordbox.xml.");
                         else
                             ConsoleUi.PrintError(message);
                         return;
                     }
 
-                    case "q":
-                    case "quit":
                     case "exit":
-                        AnsiConsole.MarkupLine("  [dim]Interactive session ended.[/]");
+                        AnsiConsole.MarkupLine("  [dim]Exited without saving.[/]");
                         return;
 
                     default:
-                        ConsoleUi.PrintError($"Unknown command '{cmd}'. Type ? for help.");
+                        // Bare query — preview without mutating the workspace
+                        PreviewSearch(store, line);
                         break;
                 }
             }
@@ -284,8 +317,49 @@ internal static class InteractiveSession
     }
 
     /// <summary>
-    /// Walks <paramref name="ws"/> one neighbor at a time using the compatibility graph. Used
-    /// after the user finishes the build phase and chooses to hand-pick the set order.
+    /// Tokenizes a command line, respecting double-quoted strings as single tokens.
+    /// </summary>
+    /// <param name="line">Raw input line (already trimmed).</param>
+    /// <returns>Array of tokens; quoted strings have their quotes stripped.</returns>
+    internal static string[] ParseTokens(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return [];
+
+        var tokens = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var inQuote = false;
+
+        foreach (var ch in line)
+        {
+            if (ch == '"')
+            {
+                inQuote = !inQuote;
+            }
+            else if (ch == ' ' && !inQuote)
+            {
+                if (current.Length > 0)
+                {
+                    tokens.Add(current.ToString());
+                    current.Clear();
+                }
+            }
+            else
+            {
+                current.Append(ch);
+            }
+        }
+
+        if (current.Length > 0)
+            tokens.Add(current.ToString());
+
+        return [.. tokens];
+    }
+
+    // ── Graph walk ───────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Walks <paramref name="ws"/> one neighbor at a time using the compatibility graph.
+    /// Entered via the <c>next</c> command; returns to the workspace REPL when done.
     /// </summary>
     private static async Task RunPickPhaseAsync(
         WorkspaceStore store,
@@ -305,156 +379,241 @@ internal static class InteractiveSession
 
         var picked = new List<Track> { currentTrack };
         var pickedIds = new HashSet<string> { currentTrack.TrackId };
+        var committed = false;
 
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"  [bold]Pick mode — building from '{Markup.Escape(ws.Name)}'[/]");
-        AnsiConsole.MarkupLine("  [dim]Pick a neighbor by number. Commands: [bold]s[/]kip reshuffle, [bold]c[/]ommit as playlist, [bold]q[/]uit.[/]");
+        AnsiConsole.MarkupLine($"  [bold]Graph walk — '{Markup.Escape(ws.Name)}'[/]");
+        PrintPickHelp();
         AnsiConsole.WriteLine();
-
         PrintCurrent(currentTrack, step: 1);
 
-        while (true)
+        var done = false;
+        while (!done)
         {
-            var neighbors = NeighborsInWorkspace(graph, currentTrack, ws, pickedIds, NeighborLimit);
-            if (neighbors.Count == 0)
+            var allNeighbors = NeighborsInWorkspace(graph, currentTrack, ws, pickedIds);
+            if (allNeighbors.Count == 0)
             {
                 AnsiConsole.MarkupLine("  [yellow]No more compatible neighbors in this workspace.[/]");
                 break;
             }
 
-            PrintNeighbors(neighbors);
+            var shownCount = Math.Min(NeighborLimit, allNeighbors.Count);
+            PrintNeighbors(allNeighbors, 0, shownCount);
 
-            Console.Write("  > ");
-            var input = Console.ReadLine()?.Trim();
-            if (input is null) break;
-
-            if (string.Equals(input, "q", StringComparison.OrdinalIgnoreCase))
+            var advance = false;
+            while (!advance && !done)
             {
-                AnsiConsole.MarkupLine("  [dim]Pick session ended.[/]");
-                break;
+                Console.Write("  next> ");
+                var input = Console.ReadLine()?.Trim().ToLowerInvariant();
+                if (input is null) { done = true; break; }
+
+                switch (input)
+                {
+                    case "quit" or "q":
+                        AnsiConsole.MarkupLine("  [dim]Graph walk ended. Back to workspace.[/]");
+                        done = true;
+                        break;
+
+                    case "help" or "?":
+                        PrintPickHelp();
+                        break;
+
+                    case "commit" or "c":
+                        CommitPicked(store, ws, picked);
+                        committed = true;
+                        done = true;
+                        break;
+
+                    case "more" or "m":
+                        if (shownCount >= allNeighbors.Count)
+                            AnsiConsole.MarkupLine($"  [dim]All {allNeighbors.Count} compatible neighbors shown.[/]");
+                        else
+                        {
+                            var prev = shownCount;
+                            shownCount = Math.Min(shownCount + NeighborLimit, allNeighbors.Count);
+                            PrintNeighbors(allNeighbors, prev, shownCount);
+                        }
+                        break;
+
+                    case "skip" or "s":
+                        // Refresh neighbor list from the same track (order may differ after re-sort)
+                        advance = true;
+                        break;
+
+                    default:
+                        if (int.TryParse(input, out var choice) && choice >= 1 && choice <= shownCount)
+                        {
+                            var nextEdge = allNeighbors[choice - 1];
+                            currentTrack = nextEdge.Target;
+                            picked.Add(currentTrack);
+                            pickedIds.Add(currentTrack.TrackId);
+                            AnsiConsole.WriteLine();
+                            PrintCurrent(currentTrack, step: picked.Count);
+                            advance = true;
+                        }
+                        else
+                        {
+                            AnsiConsole.MarkupLine(
+                                $"  [red]Enter 1–{shownCount}, more, skip, commit, or quit.[/]");
+                        }
+                        break;
+                }
             }
-
-            if (string.Equals(input, "s", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            if (string.Equals(input, "c", StringComparison.OrdinalIgnoreCase))
-            {
-                CommitPicked(store, ws, picked);
-                return;
-            }
-
-            if (!int.TryParse(input, out var choice) || choice < 1 || choice > neighbors.Count)
-            {
-                AnsiConsole.MarkupLine($"  [red]Enter 1–{neighbors.Count}, or s/c/q.[/]");
-                continue;
-            }
-
-            var nextEdge = neighbors[choice - 1];
-            currentTrack = nextEdge.Target;
-            picked.Add(currentTrack);
-            pickedIds.Add(currentTrack.TrackId);
-
-            AnsiConsole.WriteLine();
-            PrintCurrent(currentTrack, step: picked.Count);
         }
 
-        if (picked.Count > 1)
+        if (!committed && picked.Count > 1)
             OfferCommit(store, ws, picked);
     }
 
-    /// <summary>
-    /// Routes a free-text search-style command (add / intersect / except) through
-    /// <see cref="WorkspaceTools.WorkspaceFromSearch"/>. The user types <c>add bpm:140-160 zeds dead</c>
-    /// loosely — for now we treat the whole rest as the query and rely on bpm/key/playlist-filter
-    /// commands for filtered ops. Empty rest is allowed (falls through to a no-op search).
-    /// </summary>
-    private static void ApplySearch(WorkspaceStore store, string wsName, string mode, string query)
+    // ── Command helpers ──────────────────────────────────────────────────────────────────────
+
+    private static object ApplySearch(WorkspaceStore store, string wsName, string mode, string query)
     {
-        var result = WorkspaceTools.WorkspaceFromSearch(
-            store, wsName, mode, query ?? string.Empty,
+        return WorkspaceTools.WorkspaceFromSearch(
+            store, wsName, mode, query,
             playlistFilter: null, key: null, minBpm: null, maxBpm: null, limit: "5000");
-        var ws = store.Get(wsName);
-        if (ws is not null) PrintToolResult(result, ws);
     }
 
-    private static void PrintToolResult(object result, TrackSet ws)
+    private static void PreviewSearch(WorkspaceStore store, string query)
     {
-        // Tools return small anonymous objects. We don't need full reflection — pull the count
-        // off the workspace directly and surface any error string.
-        var errorProp = result.GetType().GetProperty("error");
-        if (errorProp?.GetValue(result) is string err)
+        var tracks = store.Library.Tracks.Values
+            .Search(query, TrackSearchFields.All)
+            .Take(50).ToList();
+        ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
+            $"Search: {Markup.Escape(query)} ({tracks.Count} results)");
+    }
+
+    private static void ShowPlaylist(WorkspaceStore store, string name)
+    {
+        var node = FindPlaylist(store, name);
+        if (node is null)
         {
-            ConsoleUi.PrintError(err);
+            ConsoleUi.PrintError($"Playlist '{name}' not found. Try: playlists {name}");
             return;
         }
-        AnsiConsole.MarkupLine($"  [dim]→ {ws.Count} tracks, {(ws.Ordered ? "ordered" : "unordered")}.[/]");
+        var tracks = node.TrackKeys
+            .Select(id => store.Library.Tracks.TryGetValue(id, out var t) ? t : null)
+            .OfType<Track>()
+            .Take(200).ToList();
+        ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
+            $"{Markup.Escape(node.Name)} ({tracks.Count} tracks)");
     }
 
-    private static bool Require(string value, string usage)
+    private static void ShowPlaylistSearch(WorkspaceStore store, string playlistName, string query)
     {
-        if (!string.IsNullOrWhiteSpace(value)) return true;
-        ConsoleUi.PrintError(usage);
-        return false;
-    }
-
-    private static (string Cmd, string Args) SplitCommand(string line)
-    {
-        var space = line.IndexOf(' ');
-        return space < 0
-            ? (line.ToLowerInvariant(), string.Empty)
-            : (line[..space].ToLowerInvariant(), line[(space + 1)..].Trim());
-    }
-
-    /// <summary>Prints the inline help table for the build / pick subcommands.</summary>
-    private static void PrintInteractiveHelp()
-    {
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("  [dim]<query> = free-text search across title, artist, album, and comment[/]");
-        AnsiConsole.WriteLine();
-
-        var table = new Table { ShowHeaders = false, Border = TableBorder.None };
-        table.AddColumn(new TableColumn(string.Empty) { Width = 30, NoWrap = true });
-        table.AddColumn(new TableColumn(string.Empty));
-
-        static void Section(Table t, string label)
+        var node = FindPlaylist(store, playlistName);
+        if (node is null)
         {
-            t.AddEmptyRow();
-            t.AddRow($"[dim italic]{label}[/]", string.Empty);
+            ConsoleUi.PrintError($"Playlist '{playlistName}' not found. Try: playlists {playlistName}");
+            return;
+        }
+        var tracks = node.TrackKeys
+            .Select(id => store.Library.Tracks.TryGetValue(id, out var t) ? t : null)
+            .OfType<Track>()
+            .Search(query, TrackSearchFields.All)
+            .Take(200).ToList();
+        ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
+            $"{Markup.Escape(node.Name)} / {Markup.Escape(query)} ({tracks.Count} results)");
+    }
+
+    private static void ListPlaylists(WorkspaceStore store, string filter)
+    {
+        var list = store.Library.Root.EnumeratePlaylists()
+            .Where(p => string.IsNullOrEmpty(filter)
+                || p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (list.Count == 0)
+        {
+            ConsoleUi.PrintError(string.IsNullOrEmpty(filter)
+                ? "No playlists found in library."
+                : $"No playlists matching '{filter}'.");
+            return;
+        }
+        var pt = new Table { ShowHeaders = false, Border = TableBorder.None };
+        pt.AddColumn(new TableColumn(string.Empty));
+        pt.AddColumn(new TableColumn(string.Empty) { Alignment = Justify.Right, NoWrap = true });
+        foreach (var p in list)
+            pt.AddRow($"[bold]{Markup.Escape(p.Name)}[/]", $"[dim]{p.TrackKeys.Count} tracks[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(pt);
+        AnsiConsole.WriteLine();
+    }
+
+    private static void SortWorkspace(TrackSet ws, string criterion)
+    {
+        var tracks = ws.Tracks.ToList();
+        IOrderedEnumerable<Track> sorted = criterion switch
+        {
+            "recent" => tracks.OrderByDescending(t => t.DateAdded),
+            "playcount" => tracks.OrderByDescending(t => t.PlayCount),
+            _ => tracks.OrderByDescending(t => t.Rating).ThenByDescending(t => t.PlayCount),
+        };
+        ws.SetOrder(sorted.Select(t => t.TrackId));
+    }
+
+    private static void PrintStats(TrackSet ws)
+    {
+        if (ws.Count == 0)
+        {
+            AnsiConsole.MarkupLine("  [dim]Workspace is empty.[/]");
+            return;
         }
 
-        Section(table, "Set operations");
-        table.AddRow("[bold]add <query>[/]", "Union search results into workspace");
-        table.AddRow("[bold]intersect <query>[/]", "Keep only tracks matching query");
-        table.AddRow("[bold]except <query>[/]", "Remove tracks matching query");
-        table.AddRow("[bold]add-playlist <name>[/]", "Union a library playlist's tracks");
+        var tracks = ws.Tracks.ToList();
+        var bpmTracks = tracks.Where(t => t.Bpm > 0).ToList();
+        var bpmRange = bpmTracks.Count > 0
+            ? $"{bpmTracks.Min(t => t.Bpm):0.#} – {bpmTracks.Max(t => t.Bpm):0.#}"
+            : "—";
 
-        Section(table, "Filters");
-        table.AddRow("[bold]key <camelot>[/]", "Intersect by Camelot key (e.g. key 8A)");
-        table.AddRow("[bold]bpm <min> <max>[/]", "Intersect by BPM range");
-        table.AddRow("[bold]playlist-filter <substr>[/]", "Intersect with tracks in any playlist matching substring");
+        var topKeys = tracks
+            .Where(t => !string.IsNullOrEmpty(t.Key))
+            .GroupBy(t => t.Key)
+            .OrderByDescending(g => g.Count())
+            .Take(5)
+            .Select(g => $"{Markup.Escape(g.Key)} ({g.Count()})");
 
-        Section(table, "Browse");
-        table.AddRow("[bold]search <query>[/]", "Preview search results without changing workspace");
-        table.AddRow("[bold]playlists [[substr]][/]", "List library playlists (optionally filtered)");
-        table.AddRow("[bold]playlist <name>[/]", "Show all tracks in a library playlist");
-        table.AddRow("[bold]playlist <name> / <query>[/]", "Search within a playlist");
-        table.AddRow("[bold]show [[n]][/]", "Show the first N workspace tracks (default 20)");
-        table.AddRow("[bold]count[/]", "Print workspace size");
+        var topArtists = tracks
+            .Where(t => !string.IsNullOrEmpty(t.Artist))
+            .GroupBy(t => t.Artist)
+            .OrderByDescending(g => g.Count())
+            .Take(5)
+            .Select(g => $"{Markup.Escape(g.Key)} ({g.Count()})");
 
-        Section(table, "Ordering");
-        table.AddRow("[bold]trim <n> [[by]][/]", "Shrink to top N (by = rating | recent | playCount | random)");
-        table.AddRow("[bold]seed <trackId>[/]", "Set the seed track for ordering / pick");
-        table.AddRow("[bold]order [[targetCount]][/]", "Order via the compatibility graph");
-        table.AddRow("[bold]pick[/]", "Walk the graph one neighbor at a time");
-
-        Section(table, "Session");
-        table.AddRow("[bold]commit [[name]][/]", "Commit to DJ_BUDDY and exit");
-        table.AddRow("[bold]clear[/]", "Empty the workspace");
-        table.AddRow("[bold]help | ?[/]", "Show this help");
-        table.AddRow("[bold]q | quit[/]", "Exit without committing");
-
+        AnsiConsole.WriteLine();
+        var table = new Table { ShowHeaders = false, Border = TableBorder.None };
+        table.AddColumn(new TableColumn(string.Empty) { Width = 14, NoWrap = true });
+        table.AddColumn(new TableColumn(string.Empty));
+        table.AddRow("[dim]Tracks[/]", $"{ws.Count}{(ws.Ordered ? ", ordered" : "")}");
+        table.AddRow("[dim]BPM range[/]", bpmRange);
+        table.AddRow("[dim]Keys[/]", string.Join("  ", topKeys));
+        table.AddRow("[dim]Artists[/]", string.Join("  ", topArtists));
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
+    }
+
+    // ── Seed resolution ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves a seed argument — tries direct ID match first, then library search restricted to
+    /// tracks in the workspace. Returns <c>null</c> and prints an error on failure.
+    /// </summary>
+    private static string? ResolveSeedArg(WorkspaceStore store, TrackSet ws, string arg)
+    {
+        if (ws.Contains(arg))
+            return arg;
+
+        var match = store.Library.Tracks.Values
+            .Search(arg, TrackSearchFields.All)
+            .FirstOrDefault(t => ws.Contains(t.TrackId));
+
+        if (match is null)
+        {
+            ConsoleUi.PrintError(
+                $"No workspace track matches '{arg}'. Use 'search {arg}' to preview, then 'add' first.");
+            return null;
+        }
+
+        return match.TrackId;
     }
 
     private static Track? ResolveSeed(List<Track> workspaceTracks, string? seedTrackId)
@@ -470,12 +629,157 @@ internal static class InteractiveSession
             .FirstOrDefault();
     }
 
+    // ── Parsing helpers ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Detects the "search &lt;q&gt; in playlist &lt;name&gt;" pattern in a token array.
+    /// </summary>
+    private static bool HasInPlaylist(string[] tokens, out string? query, out string? playlistName)
+    {
+        for (var i = 2; i < tokens.Length - 1; i++)
+        {
+            if (tokens[i].Equals("in", StringComparison.OrdinalIgnoreCase)
+                && tokens[i + 1].Equals("playlist", StringComparison.OrdinalIgnoreCase))
+            {
+                query        = JoinFrom(tokens, 1, i);
+                playlistName = JoinFrom(tokens, i + 2);
+                if (!string.IsNullOrEmpty(query) && !string.IsNullOrEmpty(playlistName))
+                    return true;
+            }
+        }
+        query = null;
+        playlistName = null;
+        return false;
+    }
+
+    /// <summary>Joins tokens from <paramref name="start"/> (inclusive) to <paramref name="end"/> (exclusive).</summary>
+    private static string JoinFrom(string[] tokens, int start, int end = -1)
+    {
+        if (end < 0) end = tokens.Length;
+        return start >= end ? string.Empty : string.Join(' ', tokens[start..end]);
+    }
+
+    private static void PushUndo(Stack<string[]> undoIds, Stack<string?> undoSeed, TrackSet ws, string? seedId)
+    {
+        undoIds.Push(ws.Ids.ToArray());
+        undoSeed.Push(seedId);
+    }
+
+    private static bool RequireArg(string value, string usage)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) return true;
+        ConsoleUi.PrintError(usage);
+        return false;
+    }
+
+    private static PlaylistNode? FindPlaylist(WorkspaceStore store, string name)
+    {
+        return store.Library.Root.EnumeratePlaylists()
+            .FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            ?? store.Library.Root.EnumeratePlaylists()
+                .FirstOrDefault(p => p.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ── Output helpers ───────────────────────────────────────────────────────────────────────
+
+    private static string BuildPrompt(TrackSet ws, string? seedId, RekordboxLibrary library)
+    {
+        var seedLabel = seedId is not null && library.Tracks.TryGetValue(seedId, out var t)
+            ? $" | seed: {t.Name}"
+            : string.Empty;
+        return $"🎧 [{ws.Count} tracks{seedLabel}] > ";
+    }
+
+    private static void PrintResult(object result, TrackSet ws)
+    {
+        var errorProp = result.GetType().GetProperty("error");
+        if (errorProp?.GetValue(result) is string err)
+        {
+            ConsoleUi.PrintError(err);
+            return;
+        }
+        AnsiConsole.MarkupLine($"  [dim]→ {ws.Count} tracks{(ws.Ordered ? ", ordered" : "")}.[/]");
+    }
+
+    private static void PrintOpeningScreen(TrackSet ws)
+    {
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("  [bold]🎧 DJ Buddy Interactive[/]");
+        AnsiConsole.MarkupLine($"  Workspace: [dim]{ws.Count} tracks[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("  [dim]Type a search query to preview matches.[/]");
+        AnsiConsole.MarkupLine("  [dim]Use [bold]add <query>[/] to add tracks to the workspace.[/]");
+        AnsiConsole.MarkupLine("  [dim]Use [bold]help[/] for all commands.[/]");
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("  [dim italic]Examples:[/]");
+        AnsiConsole.MarkupLine("    [dim]add zeds dead[/]");
+        AnsiConsole.MarkupLine("    [dim]add playlist \"Dubstep Favorites\"[/]");
+        AnsiConsole.MarkupLine("    [dim]filter key 8A[/]");
+        AnsiConsole.MarkupLine("    [dim]filter bpm 140 150[/]");
+        AnsiConsole.MarkupLine("    [dim]seed \"One Who Lost\"[/]");
+        AnsiConsole.MarkupLine("    [dim]order 20[/]");
+        AnsiConsole.MarkupLine("    [dim]save \"Friday Set\"[/]");
+        AnsiConsole.WriteLine();
+    }
+
+    private static void PrintHelp()
+    {
+        AnsiConsole.WriteLine();
+
+        var table = new Table { ShowHeaders = false, Border = TableBorder.None };
+        table.AddColumn(new TableColumn(string.Empty) { Width = 38, NoWrap = true });
+        table.AddColumn(new TableColumn(string.Empty));
+
+        static void Section(Table t, string label)
+        {
+            t.AddEmptyRow();
+            t.AddRow($"[dim italic]{label}[/]", string.Empty);
+        }
+
+        Section(table, "Workspace");
+        table.AddRow("[bold]add <query>[/]",                    "Add matching tracks");
+        table.AddRow("[bold]add playlist <name>[/]",            "Add all tracks from a playlist");
+        table.AddRow("[bold]filter <query>[/]",                 "Keep only matching tracks");
+        table.AddRow("[bold]filter key <camelot>[/]",           "Keep tracks in key, e.g. 8A");
+        table.AddRow("[bold]filter bpm <min> <max>[/]",         "Keep tracks in BPM range");
+        table.AddRow("[bold]filter playlist <name>[/]",         "Keep tracks from a playlist");
+        table.AddRow("[bold]remove <query>[/]",                 "Remove matching tracks");
+        table.AddRow("[bold]clear[/]",                          "Empty workspace");
+        table.AddRow("[bold]undo[/]",                           "Undo last workspace change");
+
+        Section(table, "Preview");
+        table.AddRow("[bold]search <query>[/]",                 "Preview results without changing workspace");
+        table.AddRow("[bold]find <query>[/]",                   "Alias for search");
+        table.AddRow("[bold]search <q> in playlist <name>[/]",  "Search inside a playlist");
+        table.AddRow("[bold]show [[n]][/]",                     "Show workspace tracks (default 20)");
+        table.AddRow("[bold]show playlist <name>[/]",           "Show all tracks in a playlist");
+        table.AddRow("[bold]playlists [[query]][/]",            "List library playlists");
+        table.AddRow("[bold]count[/]",                          "Show workspace track count");
+        table.AddRow("[bold]stats[/]",                          "Show BPM range, keys, artists");
+
+        Section(table, "Ordering");
+        table.AddRow("[bold]seed <trackId or query>[/]",        "Set the starting track");
+        table.AddRow("[bold]order [[n]][/]",                    "Build a compatible ordered sequence");
+        table.AddRow("[bold]next[/]",                           "Walk the graph one neighbor at a time");
+        table.AddRow("[bold]sort by rating|recent|playCount[/]","Sort workspace without removing tracks");
+        table.AddRow("[bold]take <n> [[by criterion]][/]",       "Keep top N tracks");
+
+        Section(table, "Session");
+        table.AddRow("[bold]save [[name]][/]",                  "Save to DJ_BUDDY and exit");
+        table.AddRow("[bold]exit[/]",                           "Exit without saving");
+        table.AddRow("[bold]help | ?[/]",                       "Show this help");
+
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+    }
+
+    // ── Pick-phase helpers ───────────────────────────────────────────────────────────────────
+
     private static List<CompatibilityEdge> NeighborsInWorkspace(
         BidirectionalGraph<Track, TrackEdge> graph,
         Track current,
         TrackSet workspace,
-        HashSet<string> picked,
-        int limit)
+        HashSet<string> picked)
     {
         if (!graph.TryGetOutEdges(current, out var outEdges))
             return [];
@@ -483,7 +787,6 @@ internal static class InteractiveSession
         return outEdges.OfType<CompatibilityEdge>()
             .Where(e => workspace.Contains(e.Target.TrackId) && !picked.Contains(e.Target.TrackId))
             .OrderBy(e => e.Weight)
-            .Take(limit)
             .ToList();
     }
 
@@ -495,30 +798,43 @@ internal static class InteractiveSession
         AnsiConsole.WriteLine();
     }
 
-    private static void PrintNeighbors(List<CompatibilityEdge> neighbors)
+    /// <summary>Prints neighbors[from..to] with 1-based numbers starting at from+1.</summary>
+    private static void PrintNeighbors(List<CompatibilityEdge> neighbors, int from, int to)
     {
-        AnsiConsole.MarkupLine("  [dim]Compatible next tracks:[/]");
+        if (from == 0)
+            AnsiConsole.MarkupLine("  [dim]Compatible next tracks:[/]");
+
         var table = new Table { ShowHeaders = false, Border = TableBorder.None };
-        table.AddColumn(new TableColumn(string.Empty) { Width = 4, NoWrap = true });
+        table.AddColumn(new TableColumn(string.Empty) { Width = 5, NoWrap = true });
         table.AddColumn(new TableColumn(string.Empty));
         table.AddColumn(new TableColumn(string.Empty) { Alignment = Justify.Right });
 
-        for (var i = 0; i < neighbors.Count; i++)
+        for (var i = from; i < to; i++)
         {
             var e = neighbors[i];
-            var label = $"[bold]{i + 1}.[/]";
-            var title = $"{Markup.Escape(e.Target.Artist)} — {Markup.Escape(e.Target.Name)}";
-            var meta = $"[dim]{e.Target.Bpm:0.#} BPM {Markup.Escape(e.Target.Key)} · {e.Relation}/{e.Tier}[/]";
-            table.AddRow(label, title, meta);
+            table.AddRow(
+                $"[bold]{i + 1}.[/]",
+                $"{Markup.Escape(e.Target.Artist)} — {Markup.Escape(e.Target.Name)}",
+                $"[dim]{e.Target.Bpm:0.#} BPM {Markup.Escape(e.Target.Key)} · {e.Relation}/{e.Tier}[/]");
         }
 
         AnsiConsole.Write(table);
+        if (to < neighbors.Count)
+            AnsiConsole.MarkupLine($"  [dim]… {neighbors.Count - to} more. Type [bold]more[/] to show.[/]");
         AnsiConsole.WriteLine();
+    }
+
+    private static void PrintPickHelp()
+    {
+        AnsiConsole.MarkupLine(
+            "  [dim]Pick a neighbor by number. " +
+            "Commands: [bold]more[/] (show more), [bold]skip[/] (refresh list), " +
+            "[bold]commit[/] (save as playlist), [bold]quit[/] (back to workspace), [bold]help[/][/]");
     }
 
     private static void OfferCommit(WorkspaceStore store, TrackSet ws, List<Track> picked)
     {
-        AnsiConsole.MarkupLine($"  [dim]Picked {picked.Count} tracks. Commit as a new playlist? (y/N)[/]");
+        AnsiConsole.MarkupLine($"  [dim]Picked {picked.Count} tracks. Save as a new playlist? (y/N)[/]");
         Console.Write("  > ");
         var answer = Console.ReadLine()?.Trim();
         if (string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase))
@@ -527,20 +843,19 @@ internal static class InteractiveSession
 
     private static void CommitPicked(WorkspaceStore store, TrackSet ws, List<Track> picked)
     {
-        var suggested = $"{ws.Name}-interactive";
+        var suggested = $"{ws.Name}-picked";
         AnsiConsole.MarkupLine($"  [dim]Playlist name? (default: {Markup.Escape(suggested)})[/]");
         Console.Write("  > ");
         var name = Console.ReadLine()?.Trim();
         if (string.IsNullOrEmpty(name)) name = suggested;
 
-        // Stage the picked sequence in its own workspace so the source workspace stays intact for
-        // a follow-up session.
         var staging = store.GetOrCreate(name);
         staging.SetOrder(picked.Select(t => t.TrackId));
 
         var (ok, message, count) = store.Commit(staging.Name, name);
         if (ok)
-            ConsoleUi.PrintStatus($"Committed '{message}' ({count} tracks) to DJ_BUDDY. Type /export to write rekordbox.xml.");
+            ConsoleUi.PrintStatus(
+                $"Saved '{message}' ({count} tracks) to DJ_BUDDY. Use /export to write rekordbox.xml.");
         else
             ConsoleUi.PrintError(message);
     }
