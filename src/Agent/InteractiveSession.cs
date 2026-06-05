@@ -50,8 +50,20 @@ internal static class InteractiveSession
         // Tracks from the most recent display command; lets "play 5" reference row 5.
         List<Track> lastShown = [];
 
+        MediaKeyHook? mediaKeyHook = null;
+        if (OperatingSystem.IsWindows())
+        {
+            mediaKeyHook = new MediaKeyHook(
+                onPlayPause: () => player.Pause(),
+                onStop:      () => player.Stop(),
+                onNext:      () => NavigateTrack(player, ws, +1),
+                onPrev:      () => NavigateTrack(player, ws, -1));
+        }
+
         PrintOpeningScreen(ws);
 
+        try
+        {
         while (true)
         {
             Console.Write(BuildPrompt(ws, seedId, store.Library, player));
@@ -258,19 +270,11 @@ internal static class InteractiveSession
                                 ConsoleUi.PrintError($"No track found matching '{Markup.Escape(arg)}'.");
                                 break;
                             }
-                            if (string.IsNullOrEmpty(resolved.Location))
+                            if (!TryLoadAndPlay(player, resolved, out var loadError))
                             {
-                                ConsoleUi.PrintError($"Track '{Markup.Escape(resolved.Name)}' has no file path.");
+                                ConsoleUi.PrintError(Markup.Escape(loadError!));
                                 break;
                             }
-                            var uri = new Uri(resolved.Location);
-                            // file://localhost/C:/path → LocalPath gives \\localhost\C:\path (UNC) on Windows.
-                            // When the host is loopback, extract the path component directly instead.
-                            var localPath = uri.IsLoopback
-                                ? Uri.UnescapeDataString(uri.AbsolutePath).TrimStart('/')
-                                : uri.LocalPath;
-                            player.Load(localPath, resolved);
-                            player.Play();
                         }
                         PrintPlaybackStatus(player);
                         break;
@@ -405,6 +409,12 @@ internal static class InteractiveSession
             {
                 ConsoleUi.PrintError($"Error: {ex.Message}");
             }
+        }
+        } // while (true)
+        finally
+        {
+            if (OperatingSystem.IsWindows())
+                mediaKeyHook?.Dispose();
         }
     }
 
@@ -555,6 +565,72 @@ internal static class InteractiveSession
 
         if (!committed && picked.Count > 1)
             OfferCommit(store, ws, picked);
+    }
+
+    // ── Playback helpers ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts a rekordbox <c>file://</c> URI to a local file path, handling the Windows
+    /// loopback case where <see cref="Uri.LocalPath"/> returns a UNC path instead.
+    /// </summary>
+    private static string UriToLocalPath(string location)
+    {
+        var uri = new Uri(location);
+        return uri.IsLoopback
+            ? Uri.UnescapeDataString(uri.AbsolutePath).TrimStart('/')
+            : uri.LocalPath;
+    }
+
+    /// <summary>
+    /// Loads and plays <paramref name="track"/> in <paramref name="player"/>.
+    /// Returns <c>false</c> (and sets <paramref name="error"/>) if the track has no location
+    /// or the file cannot be opened.
+    /// </summary>
+    private static bool TryLoadAndPlay(MediaPlayer player, Track track, out string? error)
+    {
+        if (string.IsNullOrEmpty(track.Location))
+        {
+            error = $"Track '{track.Name}' has no file path.";
+            return false;
+        }
+        try
+        {
+            player.Load(UriToLocalPath(track.Location), track);
+            player.Play();
+            error = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Advances to the next (<paramref name="delta"/> = +1) or previous (−1) track in the
+    /// workspace relative to the currently playing track. Called from the media-key hook thread.
+    /// </summary>
+    private static void NavigateTrack(MediaPlayer player, TrackSet ws, int delta)
+    {
+        var tracks = ws.Tracks.ToList();
+        if (tracks.Count == 0) return;
+
+        var idx = player.CurrentTrack is not null
+            ? tracks.FindIndex(t => t.TrackId == player.CurrentTrack.TrackId)
+            : -1;
+
+        var next = tracks[Math.Clamp(idx + delta, 0, tracks.Count - 1)];
+
+        // Prev on the first track (or no current) restarts the current track instead.
+        if (next.TrackId == player.CurrentTrack?.TrackId)
+        {
+            player.Seek(TimeSpan.Zero);
+            if (!player.IsPlaying) player.Play();
+            return;
+        }
+
+        TryLoadAndPlay(player, next, out _);
     }
 
     // ── Command helpers ──────────────────────────────────────────────────────────────────────
