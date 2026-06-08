@@ -190,7 +190,7 @@ internal static class InteractiveSession
                     // ── Preview ──────────────────────────────────────────────────────────────
 
                     case "search" when HasInPlaylist(tokens, out var sq, out var sp):
-                        lastShown = ShowPlaylistSearch(store, sp!, sq!);
+                        lastShown = ShowPlaylistSearch(store, sp!, sq!, player.CurrentTrack);
                         break;
 
                     case "search":
@@ -198,7 +198,7 @@ internal static class InteractiveSession
                     {
                         var query = JoinFrom(tokens, 1);
                         if (!RequireArg(query, $"Usage: {verb} <query>")) break;
-                        lastShown = PreviewSearch(store, query);
+                        lastShown = PreviewSearch(store, query, player.CurrentTrack);
                         break;
                     }
 
@@ -206,7 +206,7 @@ internal static class InteractiveSession
                     {
                         var name = JoinFrom(tokens, 2);
                         if (!RequireArg(name, "Usage: show playlist <name>")) break;
-                        lastShown = ShowPlaylist(store, name);
+                        lastShown = ShowPlaylist(store, name, player.CurrentTrack);
                         break;
                     }
 
@@ -218,7 +218,9 @@ internal static class InteractiveSession
                         ConsoleUi.RenderTrackTable(
                             tracks,
                             ["artist", "name", "bpm", "key"],
-                            $"{ws.Name} — {tracks.Count} of {ws.Count} tracks");
+                            $"{ws.Name} — {tracks.Count} of {ws.Count} tracks",
+                            player.CurrentTrack?.TrackId,
+                            player.CurrentTrack?.Key);
                         lastShown = tracks;
                         break;
                     }
@@ -343,7 +345,9 @@ internal static class InteractiveSession
                         PrintResult(result, ws);
                         ConsoleUi.RenderTrackTable(
                             ws.Tracks.ToList(), ["artist", "name", "bpm", "key"],
-                            $"{ws.Name} (ordered)");
+                            $"{ws.Name} (ordered)",
+                            player.CurrentTrack?.TrackId,
+                            player.CurrentTrack?.Key);
                         break;
                     }
 
@@ -642,17 +646,18 @@ internal static class InteractiveSession
             playlistFilter: null, key: null, minBpm: null, maxBpm: null, limit: "5000");
     }
 
-    private static List<Track> PreviewSearch(WorkspaceStore store, string query)
+    private static List<Track> PreviewSearch(WorkspaceStore store, string query, Track? nowPlaying = null)
     {
         var tracks = store.Library.Tracks.Values
             .Search(query, TrackSearchFields.All)
             .Take(50).ToList();
         ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
-            $"Search: {Markup.Escape(query)} ({tracks.Count} results)");
+            $"Search: {Markup.Escape(query)} ({tracks.Count} results)",
+            nowPlaying?.TrackId, nowPlaying?.Key);
         return tracks;
     }
 
-    private static List<Track> ShowPlaylist(WorkspaceStore store, string name)
+    private static List<Track> ShowPlaylist(WorkspaceStore store, string name, Track? nowPlaying = null)
     {
         var node = FindPlaylist(store, name);
         if (node is null)
@@ -665,11 +670,12 @@ internal static class InteractiveSession
             .OfType<Track>()
             .Take(200).ToList();
         ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
-            $"{Markup.Escape(node.Name)} ({tracks.Count} tracks)");
+            $"{Markup.Escape(node.Name)} ({tracks.Count} tracks)",
+            nowPlaying?.TrackId, nowPlaying?.Key);
         return tracks;
     }
 
-    private static List<Track> ShowPlaylistSearch(WorkspaceStore store, string playlistName, string query)
+    private static List<Track> ShowPlaylistSearch(WorkspaceStore store, string playlistName, string query, Track? nowPlaying = null)
     {
         var node = FindPlaylist(store, playlistName);
         if (node is null)
@@ -683,7 +689,8 @@ internal static class InteractiveSession
             .Search(query, TrackSearchFields.All)
             .Take(200).ToList();
         ConsoleUi.RenderTrackTable(tracks, ["artist", "name", "bpm", "key"],
-            $"{Markup.Escape(node.Name)} / {Markup.Escape(query)} ({tracks.Count} results)");
+            $"{Markup.Escape(node.Name)} / {Markup.Escape(query)} ({tracks.Count} results)",
+            nowPlaying?.TrackId, nowPlaying?.Key);
         return tracks;
     }
 

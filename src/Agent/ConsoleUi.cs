@@ -1,5 +1,6 @@
 using System.Text;
 using DJBuddy.Agent.Tools;
+using DJBuddy.Rekordbox.Graph;
 using DJBuddy.Rekordbox.Models;
 using DJBuddy.Rekordbox.Query;
 using Spectre.Console;
@@ -217,10 +218,22 @@ internal static class ConsoleUi
     /// alongside <c>artist</c>; both are routinely the first two columns.
     /// </param>
     /// <param name="title">Optional caption printed above the table in dim text.</param>
+    /// <param name="nowPlayingTrackId">
+    /// When set, the row whose <see cref="Track.TrackId"/> matches is marked as the now-playing
+    /// track (bold purple text with a <c>▶</c> marker). Leave <c>null</c> (the default) for the
+    /// agent's <c>display_tracks</c> path, which has no playback context.
+    /// </param>
+    /// <param name="nowPlayingKey">
+    /// Camelot key of the now-playing track. When set, every other row is classified against it
+    /// via <see cref="CamelotWheel.Classify"/> and colored by harmonic relation
+    /// (Same/Adjacent/EnergyBoost/EnergyDrop) with a <c>●</c> marker. Unrelated rows stay plain.
+    /// </param>
     public static void RenderTrackTable(
         IReadOnlyList<Track> tracks,
         IReadOnlyList<string> fields,
-        string? title = null)
+        string? title = null,
+        string? nowPlayingTrackId = null,
+        string? nowPlayingKey = null)
     {
         if (tracks.Count == 0)
         {
@@ -243,7 +256,8 @@ internal static class ConsoleUi
         };
 
         // Index column so users can refer to picks by number from the build/pick loops.
-        table.AddColumn(new TableColumn("[dim]#[/]") { Width = 4, NoWrap = true });
+        // Slightly wider to leave room for the now-playing / key-match marker glyph.
+        table.AddColumn(new TableColumn("[dim]#[/]") { Width = 5, NoWrap = true });
 
         foreach (var f in fields)
         {
@@ -268,15 +282,27 @@ internal static class ConsoleUi
         for (var i = 0; i < tracks.Count; i++)
         {
             var t = tracks[i];
+            var (highlightColor, marker, bold) = RowStyle(t, nowPlayingTrackId, nowPlayingKey);
+            // When a row is highlighted, the relation color (optionally bold) is the dominant
+            // signal, so it overrides the per-field yellow/dim styling below.
+            var rowStyle = highlightColor is null ? null : (bold ? $"{highlightColor} bold" : highlightColor);
+
             var row = new List<string>(capacity: fields.Count + 1)
             {
-                $"[dim]{i + 1,3}[/]",
+                rowStyle is null
+                    ? $"[dim]{i + 1,3}[/]"
+                    : $"[{rowStyle}]{marker}[/][dim]{i + 1,2}[/]",
             };
 
             foreach (var f in fields)
             {
                 var raw = TrackFieldProjector.FormatForDisplay(t, f);
                 var escaped = Markup.Escape(raw);
+                if (rowStyle is not null)
+                {
+                    row.Add($"[{rowStyle}]{escaped}[/]");
+                    continue;
+                }
                 row.Add(f switch
                 {
                     "bpm" or "key" => $"[yellow]{escaped}[/]",
@@ -290,7 +316,54 @@ internal static class ConsoleUi
         }
 
         AnsiConsole.Write(table);
+
+        // A legend so the marker/color coding is self-explanatory — only when something is playing.
+        if (!string.IsNullOrEmpty(nowPlayingTrackId) || !string.IsNullOrEmpty(nowPlayingKey))
+        {
+            AnsiConsole.MarkupLine(
+                $"  [{NowPlayingColor} bold]▶ now playing[/]   " +
+                $"[{SameKeyColor}]● same key[/]   " +
+                $"[{AdjacentColor}]● adjacent[/]   " +
+                $"[{EnergyBoostColor}]● energy boost[/]   " +
+                $"[{EnergyDropColor}]● energy drop[/]");
+        }
+
         AnsiConsole.WriteLine();
+    }
+
+    // Harmonic-relation colors, mirroring the MAUI accent palette
+    // (TrackInfoPage.xaml.cs / PlaylistPage.xaml.cs) and the MAUI Primary for now-playing.
+    private const string NowPlayingColor = "#512BD4"; // MAUI Primary (purple)
+    private const string SameKeyColor = "#48D868";    // green
+    private const string AdjacentColor = "#5B9FD4";   // blue
+    private const string EnergyBoostColor = "#F0883C"; // amber
+    private const string EnergyDropColor = "#A77BCA";  // purple
+
+    /// <summary>
+    /// Decides how a table row should be highlighted relative to the now-playing track.
+    /// </summary>
+    /// <param name="t">The track being rendered.</param>
+    /// <param name="nowId">The now-playing <see cref="Track.TrackId"/>, or <c>null</c> when nothing is playing.</param>
+    /// <param name="nowKey">The now-playing track's Camelot key, or <c>null</c>/empty when unknown.</param>
+    /// <returns>
+    /// A Spectre color hex, the marker glyph for the index column, and whether to bold the row.
+    /// The color is <c>null</c> (no highlight) when the track is unrelated to the now-playing key.
+    /// </returns>
+    private static (string? color, string marker, bool bold) RowStyle(Track t, string? nowId, string? nowKey)
+    {
+        if (!string.IsNullOrEmpty(nowId) && t.TrackId == nowId)
+            return (NowPlayingColor, "▶", true);
+
+        var relation = CamelotWheel.Classify(nowKey, t.Key, allowRelativeMajorMinor: true);
+        var color = relation switch
+        {
+            HarmonicRelation.Same => SameKeyColor,
+            HarmonicRelation.Adjacent => AdjacentColor,
+            HarmonicRelation.EnergyBoost => EnergyBoostColor,
+            HarmonicRelation.EnergyDrop => EnergyDropColor,
+            _ => null,
+        };
+        return (color, "●", false);
     }
 
     /// <summary>

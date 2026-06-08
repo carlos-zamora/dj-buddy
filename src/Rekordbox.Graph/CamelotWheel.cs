@@ -7,7 +7,7 @@ namespace DJBuddy.Rekordbox.Graph;
 /// same key, ±1 on the wheel (same letter), or a swap between letters at the same number
 /// (relative major/minor).
 /// </summary>
-internal static class CamelotWheel
+public static class CamelotWheel
 {
     /// <summary>
     /// Tries to parse a Camelot key string (e.g. <c>"6A"</c>, <c>"12B"</c>) into its numeric
