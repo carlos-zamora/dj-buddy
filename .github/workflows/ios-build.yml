@@ -90,7 +90,8 @@ jobs:
                   --type ios \
                   --file "$IPA_PATH" \
                   --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
-                  --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
+                  --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" \
+                  --use-old-altool
 
                 echo "::notice::Upload to App Store Connect completed successfully"
 
