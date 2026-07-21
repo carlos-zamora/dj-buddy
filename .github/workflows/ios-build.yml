@@ -18,7 +18,7 @@ jobs:
                   global-json-file: './global.json'
 
             - name: Install MAUI workload
-              run: dotnet workload install maui --version 10.0.201
+              run: dotnet workload install maui --version 10.0.300.3
 
             - name: Restore dependencies
               run: dotnet restore src/MAUI/DJBuddyMAUI.csproj

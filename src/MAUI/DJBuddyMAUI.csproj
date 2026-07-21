@@ -26,8 +26,8 @@
 		       <MauiXaml Update="MyPage.xaml" Inflator="Default" /> (reverts to defaults: Runtime for Debug, XamlC for Release)
 		       <MauiXaml Update="MyPage.xaml" Inflator="Runtime" /> (force runtime inflation) -->
 		<MauiXamlInflator>SourceGen</MauiXamlInflator>
-		<!-- MCT 13.0.0 requires MAUI >= 10.0.10; workload ships 10.0.20 which satisfies this. -->
-		<MauiVersion>10.0.20</MauiVersion>
+		<!-- MCT 14.2.0 requires MAUI >= 10.0.41; pinned to match the explicit Microsoft.Maui.Controls override below. -->
+		<MauiVersion>10.0.70</MauiVersion>
 
 		<!-- Display name -->
 		<ApplicationTitle>DJ Buddy</ApplicationTitle>
