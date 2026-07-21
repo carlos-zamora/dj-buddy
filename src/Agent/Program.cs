@@ -67,7 +67,8 @@ internal static class Program
         // ── Start Copilot session in background (non-blocking) ──────────────────────
 
         var store = new WorkspaceStore(library);
-        var sessionTask = TryCreateSessionAsync(store, graphTask, playlistCount);
+        var initialConnect = TryCreateSessionAsync(store, graphTask, playlistCount);
+        var initialConnectPending = true;
 
         // ── REPL ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,8 @@ internal static class Program
         bool loopStreamingStarted = false;
         TaskCompletionSource? loopSpinnerCleared = null;
         CopilotSession? handledSession = null;
+        Connection? currentConnection = null;
+        string? lastConnectError = null;
         const string spinnerSuffix = " Thinking...";
 
         void RegisterSessionHandler(CopilotSession s) => s.On<SessionEvent>(ev =>
@@ -199,7 +202,11 @@ internal static class Program
                             xmlPath = newPath;
                             store = new WorkspaceStore(library);
                             graphTask = Task.Run(() => TrackGraphBuilder.Build(library));
-                            sessionTask = TryCreateSessionAsync(store, graphTask, playlistCount);
+                            await DisposeClientAsync(currentConnection?.Client);
+                            initialConnect = TryCreateSessionAsync(store, graphTask, playlistCount);
+                            initialConnectPending = true;
+                            currentConnection = null;
+                            lastConnectError = null;
                             handledSession = null;
                             _mdRenderer.Flush();
                             ConsoleUi.PrintBanner(xmlPath, library.Tracks.Count, playlistCount);
@@ -238,10 +245,37 @@ internal static class Program
                     }
 
                     case "/reconnect":
-                        ConsoleUi.PrintStatus("Reconnecting to GitHub Copilot...");
-                        sessionTask = TryCreateSessionAsync(store, graphTask, playlistCount);
-                        handledSession = null;
+                    {
+                        // Settle any still-pending startup attempt first so its client can be
+                        // adopted (or later disposed) rather than leaked.
+                        if (initialConnectPending)
+                        {
+                            (currentConnection, lastConnectError) = await initialConnect;
+                            initialConnectPending = false;
+                        }
+
+                        var (conn, error) = await RunWithSpinnerAsync(
+                            "Reconnecting to GitHub Copilot...",
+                            TryCreateSessionAsync(store, graphTask, playlistCount));
+
+                        if (conn is null)
+                        {
+                            // Keep the existing connection (it may still be alive); the failed
+                            // attempt already disposed its own partial client.
+                            lastConnectError = error;
+                            ConsoleUi.PrintError($"Reconnect failed: {error}");
+                        }
+                        else
+                        {
+                            await DisposeClientAsync(currentConnection?.Client);
+                            currentConnection = conn;
+                            lastConnectError = null;
+                            handledSession = null;
+                            AnsiConsole.MarkupLine("[green]✔ Reconnected.[/]");
+                        }
+
                         continue;
+                    }
 
                     case "/search":
                     {
@@ -295,15 +329,25 @@ internal static class Program
 
             try
             {
-                var currentSession = await sessionTask;
-                if (currentSession is null)
+                // Resolve the background startup connect the first time we need it.
+                if (initialConnectPending)
                 {
-                    AnsiConsole.MarkupLine("[yellow]⚠ AI offline[/] [dim]— could not connect to GitHub Copilot.[/]");
+                    (currentConnection, lastConnectError) = await initialConnect;
+                    initialConnectPending = false;
+                }
+
+                if (currentConnection is null)
+                {
+                    var reason = lastConnectError is null
+                        ? " to GitHub Copilot."
+                        : $": {Markup.Escape(lastConnectError)}";
+                    AnsiConsole.MarkupLine($"[yellow]⚠ AI offline[/] [dim]— could not connect{reason}[/]");
                     AnsiConsole.MarkupLine("[dim]  Use /reconnect to retry, or /search, /suggest, /interactive to work offline.[/]");
                     Console.WriteLine();
                     continue;
                 }
 
+                var currentSession = currentConnection.Session;
                 if (!ReferenceEquals(currentSession, handledSession))
                 {
                     RegisterSessionHandler(currentSession);
@@ -346,6 +390,16 @@ internal static class Program
             Console.WriteLine();
         }
 
+        // ── Graceful teardown: kill the Copilot runtime so it doesn't orphan ────────────
+        if (currentConnection is null && initialConnectPending)
+        {
+            // Startup connect may still be in flight; wait briefly to grab its client.
+            if (await Task.WhenAny(initialConnect, Task.Delay(TimeSpan.FromSeconds(2))) == initialConnect)
+                currentConnection = initialConnect.Result.Conn;
+        }
+
+        await DisposeClientAsync(currentConnection?.Client);
+
         return 0;
     }
 
@@ -361,24 +415,105 @@ internal static class Program
     }
 
     /// <summary>
-    /// Attempts to connect to GitHub Copilot and create a session. Returns <c>null</c> if the
-    /// connection fails for any reason (no network, auth error, timeout) so the caller can
-    /// continue in offline mode.
+    /// Pairs a live Copilot client with its session so both can be torn down together. The client
+    /// owns the bundled runtime subprocess; keeping the reference lets us dispose it on
+    /// reconnect/reload/exit instead of leaking an orphaned process.
     /// </summary>
-    private static async Task<CopilotSession?> TryCreateSessionAsync(
+    private sealed record Connection(CopilotClient Client, CopilotSession Session);
+
+    /// <summary>How long to wait for a Copilot connect (start + session create) before giving up.</summary>
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// Attempts to connect to GitHub Copilot and create a session, bounded by
+    /// <see cref="ConnectTimeout"/>. On success returns the <see cref="Connection"/> and a null
+    /// error; on failure returns a null connection and a human-readable reason (the caller shows
+    /// it and continues in offline mode). The partially started client is disposed on failure so
+    /// its runtime subprocess doesn't linger.
+    /// </summary>
+    private static async Task<(Connection? Conn, string? Error)> TryCreateSessionAsync(
         WorkspaceStore store,
         Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
         int plCount)
     {
+        CopilotClient? client = null;
         try
         {
-            var client = new CopilotClient();
-            await client.StartAsync();
-            return await CreateSessionCoreAsync(client, store, graphTask, plCount);
+            using var cts = new CancellationTokenSource(ConnectTimeout);
+            client = new CopilotClient();
+            await client.StartAsync(cts.Token);
+            var session = await CreateSessionCoreAsync(client, store, graphTask, plCount, cts.Token);
+            return (new Connection(client, session), null);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return null;
+            // Tear down the half-started runtime so a retry gets a clean process.
+            await DisposeClientAsync(client);
+            var reason = ex is OperationCanceledException
+                ? $"connection timed out after {ConnectTimeout.TotalSeconds:0}s"
+                : ex.Message;
+            return (null, reason);
+        }
+    }
+
+    /// <summary>
+    /// Best-effort teardown of a Copilot client: graceful <see cref="CopilotClient.StopAsync"/>
+    /// with a bounded wait, escalating to <see cref="CopilotClient.ForceStopAsync"/> if it stalls,
+    /// then disposal. Safe to call with <c>null</c>. Never throws.
+    /// </summary>
+    private static async Task DisposeClientAsync(CopilotClient? client)
+    {
+        if (client is null)
+            return;
+
+        try
+        {
+            var stop = client.StopAsync();
+            if (await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(3))) == stop)
+                await stop; // observe any exception from a completed stop
+            else
+                await client.ForceStopAsync();
+        }
+        catch
+        {
+            // Teardown is best-effort — an already-dead runtime may fault here.
+        }
+        finally
+        {
+            try { await client.DisposeAsync(); }
+            catch { /* ignore */ }
+        }
+    }
+
+    /// <summary>
+    /// Awaits <paramref name="work"/> while animating a single-line spinner labelled
+    /// <paramref name="label"/>, clearing the line when it completes. Used by blocking commands
+    /// (e.g. <c>/reconnect</c>) that need immediate visual feedback.
+    /// </summary>
+    private static async Task<T> RunWithSpinnerAsync<T>(string label, Task<T> work)
+    {
+        var frames = new[] { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' };
+        using var cts = new CancellationTokenSource();
+        var spinner = Task.Run(async () =>
+        {
+            int i = 0;
+            while (!cts.Token.IsCancellationRequested)
+            {
+                Console.Write($"\r  \x1b[2m\x1b[33m{frames[i++ % frames.Length]} {label}\x1b[0m");
+                try { await Task.Delay(80, cts.Token); }
+                catch (OperationCanceledException) { break; }
+            }
+            Console.Write("\x1b[2K\r");
+        });
+
+        try
+        {
+            return await work;
+        }
+        finally
+        {
+            cts.Cancel();
+            await spinner;
         }
     }
 
@@ -537,11 +672,16 @@ internal static class Program
         CopilotClient copilotClient,
         WorkspaceStore store,
         Task<BidirectionalGraph<Track, TrackEdge>> graphTask,
-        int plCount)
+        int plCount,
+        CancellationToken cancellationToken = default)
     {
         var lib = store.Library;
 
-        var tools = new List<AIFunction>
+        // Declared as AIFunctionDeclaration (the base type SessionConfig.Tools expects). Each
+        // AIFunctionFactory.Create returns an AIFunction, which derives from AIFunctionDeclaration,
+        // so items add directly — a List<AIFunction> can't be cast to ICollection<AIFunctionDeclaration>
+        // (generic collections are invariant), which previously threw at session creation.
+        var tools = new List<AIFunctionDeclaration>
         {
             // ── Library search / projection ─────────────────────────────────────────
 
@@ -689,13 +829,13 @@ internal static class Program
             Model = "claude-haiku-4.5",
             OnPermissionRequest = PermissionHandler.ApproveAll,
             Streaming = true,
-            Tools = (ICollection<AIFunctionDeclaration>)tools,
+            Tools = tools,
             SystemMessage = new SystemMessageConfig
             {
                 Mode = SystemMessageMode.Replace,
                 Content = SystemPrompt.Create(lib.Tracks.Count, plCount),
             },
-        });
+        }, cancellationToken);
     }
 
     /// <summary>
