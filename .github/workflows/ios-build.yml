@@ -10,15 +10,15 @@ jobs:
 
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
 
             - name: Setup .NET
-              uses: actions/setup-dotnet@v4
+              uses: actions/setup-dotnet@v6
               with:
                   global-json-file: './global.json'
 
             - name: Install MAUI workload
-              run: dotnet workload install maui --version 10.0.201
+              run: dotnet workload install maui --version 10.0.300.3
 
             - name: Restore dependencies
               run: dotnet restore src/MAUI/DJBuddyMAUI.csproj
@@ -90,13 +90,14 @@ jobs:
                   --type ios \
                   --file "$IPA_PATH" \
                   --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
-                  --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
+                  --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" \
+                  --use-old-altool
 
                 echo "::notice::Upload to App Store Connect completed successfully"
 
             - name: Upload IPA artifact
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                 name: iOS-IPA
                 path: '**/*.ipa'
