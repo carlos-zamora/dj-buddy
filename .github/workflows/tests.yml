@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Build the test image from our own Dockerfile.
       # Docker layer caching means repeated builds reuse the restore layer as
